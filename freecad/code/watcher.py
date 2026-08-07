@@ -14,9 +14,19 @@ from __future__ import annotations
 import os
 
 import FreeCAD as App  # type: ignore[import-not-found]
-from PySide import QtCore  # FreeCAD's PySide shim
+
+try:  # FreeCAD's PySide shim — absent or unusable under FreeCADCmd (headless)
+    from PySide import QtCore
+except ImportError:  # pragma: no cover - headless builds
+    QtCore = None
 
 from . import preferences
+
+
+def _gui_available() -> bool:
+    """Hot reload needs a Qt event loop; it's a no-op headless."""
+    return QtCore is not None and App.GuiUp
+
 
 _watcher: QtCore.QFileSystemWatcher | None = None
 _timers: dict[str, QtCore.QTimer] = {}
@@ -37,6 +47,8 @@ def _key(obj) -> tuple:
 
 
 def ensure_watched(obj) -> None:
+    if not _gui_available():
+        return
     path = getattr(obj, "SourceFile", None)
     if not path:
         return
@@ -47,6 +59,8 @@ def ensure_watched(obj) -> None:
 
 
 def unwatch(obj) -> None:
+    if not _gui_available():
+        return
     path = getattr(obj, "SourceFile", None)
     if not path:
         return
