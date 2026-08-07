@@ -190,6 +190,18 @@ class KernelManager:
             self.stop()
             self._ensure_started_sync()
 
+    def rebuild_env(self) -> None:
+        """Stop the kernel, delete the managed environment, re-provision
+        from scratch (background — progress in the Report view). This is
+        how users pick up new kernel dependencies after an addon update."""
+        with self._lock:
+            self.stop()
+            env_dir = self.env_dir()
+            if os.path.isdir(env_dir):
+                _log(f"removing kernel environment at {env_dir}…")
+                shutil.rmtree(env_dir)
+        self.ensure_started(background=True)
+
     def stop(self) -> None:
         with self._lock:
             if self._client is not None:
