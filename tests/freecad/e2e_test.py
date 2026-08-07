@@ -115,6 +115,45 @@ def main() -> None:
     check("recovers after script error", abs(obj.Shape.Volume - v1) < 1e-6,
           f"volume={obj.Shape.Volume:.1f}, expected {v1:.1f}")
 
+    # 6b. Parameter sync semantics: the script is the source of truth
+    #     unless the user overrode a value in the property panel.
+    #     State here: obj.length == 100.0 (user override; script default 60),
+    #     obj.width == 40.0 (never touched).
+    with open(script, encoding="utf-8") as f:
+        current = f.read()
+    edited = current.replace("width = 40.0", "width = 55.0")       # follow
+    edited = edited.replace("length = 60.0", "length = 75.0")      # overridden
+    edited = edited.replace(
+        'PARAMS = ["length", "width", "thickness", "hole_d"]',
+        'notch = 3.0\nPARAMS = ["length", "width", "notch"]',       # +notch, -thickness, -hole_d
+    )
+    with open(script, "w", encoding="utf-8") as f:
+        f.write(edited)
+    obj.touch()
+    doc.recompute()
+    check("un-overridden param follows script edit",
+          getattr(obj, "width", None) == 55.0, f"width={getattr(obj, 'width', None)}")
+    check("user-overridden param keeps user value",
+          getattr(obj, "length", None) == 100.0, f"length={getattr(obj, 'length', None)}")
+    check("newly declared param appears as property",
+          getattr(obj, "notch", None) == 3.0)
+    check("undeclared params removed from properties",
+          not hasattr(obj, "thickness") and not hasattr(obj, "hole_d"))
+    check("geometry reflects script-edited param",
+          obj.Shape.Volume > v1, f"{v1:.1f} -> {obj.Shape.Volume:.1f}")
+
+    # 6c. Override visibility: property tooltips state the status, and
+    #     overridden_params reports exactly the shadowed ones.
+    from freecad.code.feature import overridden_params
+
+    check("overridden param marked in its tooltip",
+          "OVERRIDDEN" in obj.getDocumentationOfProperty("length"))
+    check("following param marked in its tooltip",
+          "Follows the script" in obj.getDocumentationOfProperty("width"))
+    check("overridden_params reports exactly the shadowed params",
+          set(overridden_params(obj)) == {"length"},
+          f"reported: {sorted(overridden_params(obj))}")
+
     # 7. Persistence: save to .FCStd, close, reopen. The shape, the
     #    parameter values, and the proxy must all survive — and the object
     #    must still recompute through the kernel after restore. This is the
@@ -139,6 +178,15 @@ def main() -> None:
         check("recomputes through kernel after reload",
               0 < obj2.Shape.Volume < v_saved,
               f"volume={obj2.Shape.Volume:.1f}")
+        # Reset clears overrides (override state survived the reload).
+        from freecad.code.feature import reset_params_to_script
+
+        reset_params_to_script(obj2)
+        check("reset returns params to script defaults",
+              getattr(obj2, "length", None) == 75.0,
+              f"length={getattr(obj2, 'length', None)}")
+        check("reset param follows script again",
+              "Follows the script" in obj2.getDocumentationOfProperty("length"))
     App.closeDocument(doc2.Name)
 
     # 8. CadQuery scripts work through the same pipeline (Workplane

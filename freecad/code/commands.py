@@ -131,10 +131,25 @@ class KernelRestartCommand(_BaseCommand):
         KernelManager.instance().restart()
 
 
+class ResetParamsCommand(_BaseCommand):
+    name = "Code_ResetParams"
+    text = "Reset parameters to script"
+    tooltip = ("Clear panel overrides on the selected script object(s) — "
+               "parameters go back to following the script's defaults")
+
+    def Activated(self):
+        from .feature import is_script_object, reset_params_to_script
+
+        for obj in Gui.Selection.getSelection():
+            if is_script_object(obj):
+                reset_params_to_script(obj)
+
+
 ALL_COMMANDS = [
     NewScriptCommand,
     OpenScriptCommand,
     RerunCommand,
+    ResetParamsCommand,
     ToggleWatchCommand,
     KernelRestartCommand,
 ]
