@@ -6,9 +6,9 @@
   <date>2026-08-07</date>
   <maintainer email="sol@titles.xyz">sol</maintainer>
   <license file="LICENSE">LGPL-2.1-or-later</license>
-  <url type="repository" branch="main">https://github.com/REPLACE_ME/freecad-code-workbench</url>
-  <url type="readme">https://github.com/REPLACE_ME/freecad-code-workbench/blob/main/README.md</url>
-  <url type="bugtracker">https://github.com/REPLACE_ME/freecad-code-workbench/issues</url>
+  <url type="repository" branch="main">https://github.com/jokroese/freecad-code-workbench</url>
+  <url type="readme">https://github.com/jokroese/freecad-code-workbench/blob/main/README.md</url>
+  <url type="bugtracker">https://github.com/jokroese/freecad-code-workbench/issues</url>
 
   <content>
     <workbench>
