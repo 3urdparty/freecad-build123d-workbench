@@ -1,0 +1,15 @@
+# Dev tooling for the repository. The addon itself is not pip-installed —
+# it lives in FreeCAD's Mod directory. The kernel has its own pyproject.
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["examples"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+  "E402",  # tests adjust sys.path before imports by design
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

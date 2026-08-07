@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uvx ruff check .
+
+  # Fast tests: RPC protocol + executor. No OCP, no FreeCAD.
+  core-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install pytest
+      - run: pytest tests/test_rpc_protocol.py tests/test_executor.py -v
+
+  # Kernel tests against the real CAD stack (OCP + build123d + cadquery).
+  kernel-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pytest build123d cadquery -e ./kernel
+      - run: pytest tests/ -v
+
+  # Workbench tests headless inside FreeCAD (BREP import, ScriptObject).
+  # TODO(phase 1): add tests/freecad/ and run them via FreeCADCmd, e.g.:
+  #   container: ghcr.io/freecad/freecad:1.1
+  #   run: FreeCADCmd -t tests/freecad/run_all.py
+  # Kept as a stub so the matrix shape is visible from day one.
