@@ -36,7 +36,7 @@ provisions the kernel's virtual environment automatically on first run (using
 1. Clone into your FreeCAD `Mod` directory:
    ```
    cd ~/.local/share/FreeCAD/Mod   # or the Mod dir for your platform
-   git clone https://github.com/REPLACE_ME/freecad-code-workbench
+   git clone https://github.com/jokroese/freecad-code-workbench
    ```
 2. Restart FreeCAD and select the **Code** workbench.
 3. First activation provisions the kernel environment (progress in Report view).
