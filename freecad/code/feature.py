@@ -170,6 +170,8 @@ class ScriptObjectProxy:
         )
         if result.get("stdout"):
             App.Console.PrintMessage(result["stdout"])
+        # Kept for the editor panel: last error frames (or None on success).
+        self.last_error = result.get("error") or None
         if result.get("error"):
             frames = result["error"]
             loc = frames[-1] if frames else {}
@@ -235,6 +237,12 @@ class ScriptViewProvider:
 
     def attach(self, vobj):
         self._vobj = vobj
+
+    def doubleClicked(self, vobj):  # noqa: N802 (FreeCAD API)
+        from .editor.panel import open_editor
+
+        open_editor(vobj.Object)
+        return True
 
     def dumps(self):
         return None

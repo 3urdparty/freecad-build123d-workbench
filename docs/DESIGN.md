@@ -183,11 +183,45 @@ compatibility means users keep VS Code/Neovim/PyCharm, with real LSP, their own
 keybindings, their own plugins — and FreeCAD becomes the viewer with a full CAD
 system behind it. This is most of the value for a fraction of the effort.
 
-**Tier 2 (Phase 2): embedded editor.** Monaco in a `QWebEngineView`, with
-`basedpyright` (or `python-lsp-server`) launched from the *kernel's* venv so
-completions know build123d's types rather than FreeCAD's. Kernel tracebacks map
-to line decorations; edits re-execute on debounce. A pure-Qt LSP client was
-considered and rejected: substantially more work for a worse editing experience.
+**Tier 2 (Phase 2): embedded editor — native Qt + kernel-side jedi.**
+
+The original draft proposed Monaco in a `QWebEngineView`. Research (2026-08,
+verified empirically against the official FreeCAD 1.0.2 bundle) killed that
+and every other off-the-shelf option:
+
+| Option | Verdict |
+|---|---|
+| Monaco / QWebEngineView | Official bundles ship **no QtWebEngine** (verified: `libQt5WebEngineWidgets` absent) |
+| QScintilla | Bindings are PyQt-only; FreeCAD ships PySide — dual Qt bindings in one process is unsafe |
+| Spyder editor components (cq-editor's approach) | Hard PyQt5 dependency, same conflict |
+| FreeCAD's built-in macro editor | C++ `Gui::PythonEditor`, not exposed for Python embedding; completions would know FreeCAD's Python, not the kernel's |
+| **Custom QPlainTextEdit (chosen)** | Pure PySide, works on every build; intelligence via kernel RPC |
+
+Code intelligence design — the architecture's hidden payoff: the kernel has
+*executed* the script, so it holds the live namespace. Completions resolve
+against real objects instead of static inference, which is what makes
+build123d's `from build123d import *` convention and fluent chains work.
+Measured three-tier engine (`kernel.complete` / `kernel.signatures` RPC):
+
+1. `jedi.Interpreter` over the stashed post-run namespace — 60–300 ms warm,
+   solves star-imports and chains; crashes on a known jedi runtime-generics
+   bug for some properties (e.g. `bp.part.`).
+2. `dir()`-eval fallback for pure attribute chains (~0.4 ms) — covers exactly
+   the jedi crash cases; evaluates dotted names only, never calls.
+3. Static `jedi.Script` — pre-first-run files; also provides signatures
+   (full typed signatures for build123d verified).
+
+An LSP client (for basedpyright/pylsp) was rejected for v1: no PySide LSP
+client exists and writing one is a bigger project than the editor itself.
+Monaco remains a possible future enhancement gated on WebEngine detection.
+
+The editor itself (`freecad/code/editor/`): QPlainTextEdit subclass with line
+numbers, Python syntax highlighting, auto-indent, completion popup fed
+asynchronously (worker thread → Qt signal, stale answers dropped), Ctrl+Enter
+run, Ctrl+S save. The dock panel (one per ScriptObject, opened by command or
+double-click) saves through the filesystem so the Tier-1 watcher machinery is
+reused unchanged, and maps kernel tracebacks to a highlighted error line via
+the proxy's `last_error`.
 
 ## 7. Packaging and distribution
 

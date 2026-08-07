@@ -120,6 +120,20 @@ class ToggleWatchCommand(_BaseCommand):
                 obj.AutoWatch = not obj.AutoWatch
 
 
+class EditScriptCommand(_BaseCommand):
+    name = "Code_EditScript"
+    text = "Edit script"
+    tooltip = "Open the selected script object in the embedded editor"
+
+    def Activated(self):
+        from .editor.panel import open_editor
+        from .feature import is_script_object
+
+        for obj in Gui.Selection.getSelection():
+            if is_script_object(obj):
+                open_editor(obj)
+
+
 class KernelRestartCommand(_BaseCommand):
     name = "Code_KernelRestart"
     text = "Restart kernel"
@@ -148,6 +162,7 @@ class ResetParamsCommand(_BaseCommand):
 ALL_COMMANDS = [
     NewScriptCommand,
     OpenScriptCommand,
+    EditScriptCommand,
     RerunCommand,
     ResetParamsCommand,
     ToggleWatchCommand,

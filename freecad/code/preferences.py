@@ -13,6 +13,16 @@ def debounce_ms() -> int:
     return _grp().GetInt("DebounceMs", 200)
 
 
+def autosave_enabled() -> bool:
+    """Embedded editor: save + re-run automatically while typing."""
+    return _grp().GetBool("AutosaveEnabled", True)
+
+
+def autosave_ms() -> int:
+    """Idle time before the embedded editor autosaves and re-runs."""
+    return _grp().GetInt("AutosaveMs", 600)
+
+
 def auto_start_kernel() -> bool:
     return _grp().GetBool("AutoStartKernel", True)
 

@@ -12,6 +12,7 @@ references, and holding strong references would keep deleted objects alive.
 from __future__ import annotations
 
 import os
+import time
 
 import FreeCAD as App  # type: ignore[import-not-found]
 
@@ -32,6 +33,15 @@ _watcher: QtCore.QFileSystemWatcher | None = None
 _timers: dict[str, QtCore.QTimer] = {}
 # path -> {(document name, object name)}
 _subscribers: dict[str, set] = {}
+# path -> monotonic time of the last write made by the embedded editor
+_self_writes: dict[str, float] = {}
+
+
+def mark_self_write(path: str) -> None:
+    """The embedded editor saves and recomputes explicitly; the watcher
+    event caused by that same write must be swallowed, or every editor
+    save executes the script twice."""
+    _self_writes[path] = time.monotonic()
 
 
 def _get_watcher() -> QtCore.QFileSystemWatcher:
@@ -72,6 +82,13 @@ def unwatch(obj) -> None:
 
 
 def _on_file_changed(path: str) -> None:
+    if time.monotonic() - _self_writes.pop(path, -1e9) < 1.0:
+        # Editor-initiated write: recompute is handled by the panel.
+        # Still re-add the watch in case the save dropped it.
+        w = _get_watcher()
+        if os.path.exists(path) and path not in w.files():
+            w.addPath(path)
+        return
     # Debounce: editors fire several change events per save.
     timer = _timers.get(path)
     if timer is None:
