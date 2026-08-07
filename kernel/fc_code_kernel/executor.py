@@ -30,7 +30,7 @@ def introspect_params(path: str) -> list[dict]:
     are listed in a module-level ``PARAMS = [...]`` list. Returns
     [{name, type, default, doc}].
     """
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         tree = ast.parse(f.read(), filename=path)
 
     literals: dict[str, Any] = {}
@@ -72,7 +72,7 @@ def run_script(path: str | None, source: str | None, params: dict) -> dict:
     if source is None:
         if path is None:
             raise ValueError("kernel.run needs 'path' or 'source'")
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             source = f.read()
 
     collector = ShowCollector()

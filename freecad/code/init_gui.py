@@ -8,7 +8,6 @@ import os
 
 import FreeCADGui as Gui  # type: ignore[import-not-found]
 
-
 ICON_PATH = os.path.join(os.path.dirname(__file__), "resources", "icons")
 
 

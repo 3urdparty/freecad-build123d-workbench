@@ -2,11 +2,11 @@
 
 import os
 
-import FreeCAD as App  # type: ignore[import-not-found]
 import FreeCADGui as Gui  # type: ignore[import-not-found]
 
-from .init_gui import ICON_PATH
+import FreeCAD as App  # type: ignore[import-not-found]
 
+from .init_gui import ICON_PATH
 
 NEW_SCRIPT_TEMPLATE = '''\
 """New Code Workbench script.

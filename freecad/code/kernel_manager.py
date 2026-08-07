@@ -14,7 +14,6 @@ import shutil
 import subprocess
 import sys
 import threading
-from typing import Any, Optional
 
 import FreeCAD as App  # type: ignore[import-not-found]
 
@@ -42,7 +41,7 @@ SCRUB_ENV_VARS = (
 )
 
 
-def _clean_env(extra: Optional[dict] = None) -> dict:
+def _clean_env(extra: dict | None = None) -> dict:
     env = {k: v for k, v in os.environ.items() if k not in SCRUB_ENV_VARS}
     if extra:
         env.update(extra)
@@ -65,17 +64,17 @@ def _addon_root() -> str:
 class KernelManager:
     """Singleton owner of the kernel subprocess and its RPC connection."""
 
-    _instance: Optional["KernelManager"] = None
+    _instance: KernelManager | None = None
 
     @classmethod
-    def instance(cls) -> "KernelManager":
+    def instance(cls) -> KernelManager:
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
 
     def __init__(self) -> None:
-        self._proc: Optional[subprocess.Popen] = None
-        self._client: Optional[RpcClient] = None
+        self._proc: subprocess.Popen | None = None
+        self._client: RpcClient | None = None
         self._token: str = ""
         self._lock = threading.RLock()
 

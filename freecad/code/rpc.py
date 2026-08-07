@@ -17,7 +17,7 @@ import json
 import socket
 import threading
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 PROTOCOL_VERSION = 0
 
@@ -54,7 +54,7 @@ class RpcClient:
     port: int
     token: str
     timeout: float = 300.0
-    _sock: Optional[socket.socket] = field(default=None, repr=False)
+    _sock: socket.socket | None = field(default=None, repr=False)
     _rfile: Any = field(default=None, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _next_id: int = 0

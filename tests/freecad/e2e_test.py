@@ -87,7 +87,7 @@ def main() -> None:
     #    material, so volume increases). Parameter defaults in the file are
     #    intentionally overridden by the object's properties, so we don't
     #    edit those.
-    with open(script, "r", encoding="utf-8") as f:
+    with open(script, encoding="utf-8") as f:
         source = f.read()
     assert "radius=4" in source, "example changed; update this test"
     with open(script, "w", encoding="utf-8") as f:
