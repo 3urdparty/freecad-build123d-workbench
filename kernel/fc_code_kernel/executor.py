@@ -102,6 +102,12 @@ def run_script(path: str | None, source: str | None, params: dict) -> dict:
         error = _structured_traceback(path or SCRIPT_FILENAME)
     finally:
         set_collector(None)
+        # Stash the (possibly partial) namespace for live completions —
+        # even a failed run usually leaves the imports bound, which is
+        # most of what completion needs.
+        from .completion import stash_namespace
+
+        stash_namespace(path or SCRIPT_FILENAME, namespace)
 
     objects = []
     if error is None:

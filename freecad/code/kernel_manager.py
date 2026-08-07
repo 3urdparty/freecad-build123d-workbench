@@ -228,3 +228,18 @@ class KernelManager:
         self._ensure_started_sync()
         assert self._client is not None
         return self._client.call("kernel.introspect_params", path=path)
+
+    def complete(self, source: str, line: int, column: int, path: str) -> list:
+        """Completions at 1-based line / 0-based column. Returns items list."""
+        self._ensure_started_sync()
+        assert self._client is not None
+        result = self._client.call("kernel.complete", source=source,
+                                   line=line, column=column, path=path)
+        return result.get("items", [])
+
+    def signatures(self, source: str, line: int, column: int, path: str) -> list:
+        self._ensure_started_sync()
+        assert self._client is not None
+        result = self._client.call("kernel.signatures", source=source,
+                                   line=line, column=column, path=path)
+        return result.get("signatures", [])

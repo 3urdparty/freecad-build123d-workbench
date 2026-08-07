@@ -50,10 +50,26 @@ def _introspect(params: dict) -> list:
     return introspect_params(params["path"])
 
 
+def _complete(params: dict) -> dict:
+    from .completion import complete
+
+    return {"items": complete(params["source"], params["line"],
+                              params["column"], params.get("path"))}
+
+
+def _signatures(params: dict) -> dict:
+    from .completion import signatures
+
+    return {"signatures": signatures(params["source"], params["line"],
+                                     params["column"], params.get("path"))}
+
+
 METHODS = {
     "kernel.hello": _hello,
     "kernel.run": _run,
     "kernel.introspect_params": _introspect,
+    "kernel.complete": _complete,
+    "kernel.signatures": _signatures,
 }
 
 
