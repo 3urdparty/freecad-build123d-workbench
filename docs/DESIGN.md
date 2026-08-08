@@ -97,9 +97,12 @@ crosses the boundary is BREP bytes plus a JSON metadata sidecar.
 
 - Locates or creates the managed venv under FreeCAD's user app-data directory
   (`App.getUserAppDataDir()/CodeWorkbench/env`).
-- Provisions with `uv` when available (fast, reproducible), falling back to
-  `python -m venv` + `pip`. Installs the `fc-code-kernel` package plus
-  `build123d` / `cadquery` at pinned-compatible versions.
+- Provisions with `uv` when available (fast, reproducible), including explicit
+  Homebrew/user-local discovery for GUI launches whose `PATH` is minimal.
+  Falls back only to a compatible system Python (3.10+), never FreeCAD's
+  embedded interpreter. Installs the `fc-code-kernel` package plus `build123d`
+  / `cadquery` at pinned-compatible versions, and reports captured installer
+  stderr when provisioning fails.
 - Spawns the kernel subprocess (`python -m fc_code_kernel --port 0`), reads the
   bound port from its stdout handshake, maintains the RPC connection.
 - Restarts on crash with backoff; surfaces kernel stderr in FreeCAD's Report view.

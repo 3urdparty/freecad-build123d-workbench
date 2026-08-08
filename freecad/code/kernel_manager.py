@@ -18,6 +18,7 @@ import threading
 import FreeCAD as App  # type: ignore[import-not-found]
 
 from . import preferences, rpc
+from .provisioning import MIN_PYTHON, find_compatible_python, find_uv, run_checked
 from .rpc import RpcClient, RpcError
 
 HANDSHAKE_PREFIX = "FC_CODE_KERNEL PORT="
@@ -120,26 +121,45 @@ class KernelManager:
         os.makedirs(os.path.dirname(env_dir), exist_ok=True)
         clean = _clean_env()
         python = self._env_python()
-        uv = shutil.which("uv")
+        uv = find_uv()
         _log(f"provisioning kernel environment at {env_dir} (first run)…")
         if uv:
             # only-managed: never seed the venv from FreeCAD's/conda's own
             # python (see KERNEL_PYTHON above); uv downloads and caches a
             # standalone CPython on first run.
-            subprocess.run(
-                [uv, "venv", "--python", KERNEL_PYTHON, env_dir], check=True,
+            _log(f"creating a Python {KERNEL_PYTHON} environment with {uv}…")
+            run_checked(
+                [uv, "venv", "--python", KERNEL_PYTHON, env_dir],
                 env={**clean, "UV_PYTHON_PREFERENCE": "only-managed"},
+                label="creating the kernel environment",
             )
             pip_prefix = [uv, "pip", "install", "--python", python]
         else:
             # Use *a* system python; FreeCAD's embedded interpreter may not
             # ship the venv module on all platforms.
-            host_py = shutil.which("python3") or sys.executable
-            subprocess.run([host_py, "-m", "venv", env_dir], check=True, env=clean)
+            host_py = find_compatible_python(env=clean, excluded=(sys.executable,))
+            if host_py is None:
+                required = ".".join(str(part) for part in MIN_PYTHON)
+                raise RuntimeError(
+                    f"Python {required}+ is required for the kernel, but FreeCAD could not "
+                    "find uv or a compatible system Python. Install uv, then use "
+                    "Code → Rebuild kernel environment."
+                )
+            _log(f"creating the kernel environment with {host_py}…")
+            run_checked(
+                [host_py, "-m", "venv", env_dir],
+                env=clean,
+                label="creating the kernel environment",
+            )
             pip_prefix = [python, "-m", "pip", "install"]
         requirements = [r.strip() for r in preferences.package_pins().splitlines() if r.strip()]
         kernel_src = os.path.join(_addon_root(), "kernel")
-        subprocess.run([*pip_prefix, "-e", kernel_src, *requirements], check=True, env=clean)
+        _log("installing kernel packages: " + ", ".join(requirements) + "…")
+        run_checked(
+            [*pip_prefix, "-e", kernel_src, *requirements],
+            env=clean,
+            label="installing kernel packages",
+        )
         self._prefer_vtk_ocp(python, clean, uv)
         with open(self._sentinel(), "w", encoding="utf-8") as f:
             f.write("ok\n")
@@ -177,7 +197,11 @@ class KernelManager:
         else:
             cmd = [python, "-m", "pip", "install", "--force-reinstall", "--no-deps",
                    f"cadquery-ocp=={version}"]
-        subprocess.run(cmd, check=True, env=clean)
+        run_checked(
+            cmd,
+            env=clean,
+            label=f"reinstalling cadquery-ocp=={version}",
+        )
         again = subprocess.run(probe, env=clean, capture_output=True, text=True)
         if again.returncode:
             _log("cadquery still fails to import:\n" + again.stderr.strip())
