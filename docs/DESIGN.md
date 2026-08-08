@@ -270,13 +270,14 @@ another local user cannot drive the kernel. Scripts embedded in `.FCStd` files
 (`SourceInline`) never auto-execute on document open without a per-document
 confirmation, mirroring FreeCAD's macro-security posture.
 
-## 11. Open questions
+## 11. Open questions — resolved status
 
 1. Pin strategy for `build123d`/`cadquery`/OCP in the managed venv — hard pins
    with an "update environment" button, or ranges? (Leaning: hard pins + button.)
-2. Should `show_object` options (color/alpha) map onto FreeCAD ViewObject
-   properties or stay metadata-only until Phase 2?
-3. Embedded-vs-file scripts as the default for New Script? (Leaning: file-backed,
-   since Tier 1 is external-editor-first.)
+2. **show_object color/alpha — RESOLVED: applied.** Single object → ViewObject
+   ShapeColor/Transparency; compound → per-face DiffuseColor per child shape;
+   shown name → object Label unless the user has renamed it (user wins).
+3. **Embedded-vs-file scripts — RESOLVED: file-backed** (Tier 1 is
+   external-editor-first; `SourceInline` remains unimplemented).
 4. Whether to expose the kernel to *other* addons (e.g. ocp-freecad-cam could
-   reuse the managed venv) via a small public API.
+   reuse the managed venv) via a small public API — still open.

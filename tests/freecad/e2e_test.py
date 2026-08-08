@@ -343,6 +343,16 @@ def main() -> None:
     else:
         check("cadquery script produces correct geometry",
               abs(cq_volume - 1000.0) < 1e-6, f"volume={cq_volume:.1f}")
+    # 8b. show_object(name=...) becomes the object Label (until the user
+    #     renames it — then the user wins; colors are ViewObject-only and
+    #     need the GUI, so they're covered by unit tests + manual testing).
+    check("shown name becomes the object label",
+          cq_obj.Label == "cq_box", f"label={cq_obj.Label!r}")
+    cq_obj.Label = "my_rename"
+    cq_obj.touch()
+    doc3.recompute()
+    check("user rename beats the shown name",
+          cq_obj.Label == "my_rename", f"label={cq_obj.Label!r}")
 
     # 9. Multiple shown objects arrive as a compound (v0 contract).
     multi_script = os.path.join(tmp, "multi.py")
