@@ -57,6 +57,7 @@ class NewScriptCommand(_BaseCommand):
     name = "Code_NewScript"
     text = "New script"
     tooltip = "Create a new build123d/CadQuery script and add it to the document"
+    icon = "code_new_script.svg"
 
     def Activated(self):
         from PySide import QtWidgets  # FreeCAD's PySide shim
@@ -78,6 +79,7 @@ class OpenScriptCommand(_BaseCommand):
     name = "Code_OpenScript"
     text = "Open script"
     tooltip = "Add an existing script to the document as a parametric object"
+    icon = "code_open_script.svg"
 
     def Activated(self):
         from PySide import QtWidgets
@@ -95,6 +97,7 @@ class RerunCommand(_BaseCommand):
     name = "Code_Rerun"
     text = "Re-run"
     tooltip = "Re-execute the selected script object(s)"
+    icon = "code_rerun.svg"
 
     def Activated(self):
         from .feature import is_script_object
@@ -110,6 +113,7 @@ class ToggleWatchCommand(_BaseCommand):
     name = "Code_ToggleWatch"
     text = "Toggle watch"
     tooltip = "Toggle hot reload (re-run on file save) for the selected script object(s)"
+    icon = "code_toggle_watch.svg"
 
     def Activated(self):
         from .feature import is_script_object
@@ -123,6 +127,7 @@ class EditScriptCommand(_BaseCommand):
     name = "Code_EditScript"
     text = "Edit script"
     tooltip = "Open the selected script object in the embedded editor"
+    icon = "code_edit_script.svg"
 
     def Activated(self):
         from .editor.panel import open_editor
@@ -137,6 +142,7 @@ class KernelRestartCommand(_BaseCommand):
     name = "Code_KernelRestart"
     text = "Restart kernel"
     tooltip = "Restart the build123d/CadQuery kernel process"
+    icon = "code_kernel_restart.svg"
 
     def Activated(self):
         from .kernel_manager import KernelManager
@@ -149,6 +155,7 @@ class ResetParamsCommand(_BaseCommand):
     text = "Reset parameters to script"
     tooltip = ("Clear panel overrides on the selected script object(s) — "
                "parameters go back to following the script's defaults")
+    icon = "code_reset_params.svg"
 
     def Activated(self):
         from .feature import is_script_object, reset_params_to_script
@@ -163,6 +170,7 @@ class RebuildEnvCommand(_BaseCommand):
     text = "Rebuild kernel environment"
     tooltip = ("Delete and re-provision the kernel's Python environment "
                "(build123d/cadquery/jedi) — use after updating the addon")
+    icon = "code_rebuild_env.svg"
 
     def Activated(self):
         from PySide import QtWidgets
