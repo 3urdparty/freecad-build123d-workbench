@@ -275,11 +275,19 @@ text.
 
 ## 9. Phased roadmap
 
-| Phase | Scope | Outcome |
-|---|---|---|
-| **1** | Kernel + venv provisioning, RPC, BREP bridge, ScriptObject, hot reload, minimal toolbar | build123d/CQ models as parametric FreeCAD objects; external-editor workflow end to end |
-| **2** | Embedded Monaco + LSP editor, traceback line-mapping UI, parameter panel polish | One-window experience for users who want it |
-| **3** | Bidirectional selection (3D pick ↔ code line, via subshape provenance in metadata), subshape-stability hashing, richer assembly metadata | The "magical" tier; toponaming mitigation |
+| Phase | Scope | Outcome | Status |
+|---|---|---|---|
+| **1** | Kernel + venv provisioning, RPC, BREP bridge, ScriptObject, hot reload, minimal toolbar | build123d/CQ models as parametric FreeCAD objects; external-editor workflow end to end | ✅ shipped (0.1.0) |
+| **2** | Embedded editor (native Qt + kernel jedi — see §6), traceback line-mapping, autosave with last-valid-model, parameter override semantics + visibility, run timeout, names/colors, calltips, preferences page, pinned kernel packages | One-window experience; safe-by-default iteration loop | ✅ shipped (0.2.0) |
+| **3** | Assembly hierarchy as child objects (today: compound), bidirectional selection (3D pick ↔ code line, via subshape provenance in metadata), subshape-stability hashing (toponaming mitigation), kernel API for other addons | The "magical" tier | ⬜ not started |
+
+Known engineering debt, tracked outside the phases: the GUI thread still
+blocks for the duration of a run (bounded by RunTimeoutS, but a long legit
+model is still a stall — the structural fix is an async execute, which cuts
+against FreeCAD's synchronous recompute model and needs design); RPC is one
+request in flight, so editor completions queue behind a running script;
+BREP rides as base64 in JSON (revisit when large assemblies hurt); one icon
+serves every command.
 
 ## 10. Security considerations
 
