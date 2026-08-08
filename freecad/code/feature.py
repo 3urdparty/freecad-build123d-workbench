@@ -164,9 +164,16 @@ class ScriptObjectProxy:
         # reflects them; removals commit after the run succeeds.
         declared = self._sync_parameters(obj)
 
-        result = KernelManager.instance().run_script(
-            obj.SourceFile, self._current_params(obj)
-        )
+        try:
+            result = KernelManager.instance().run_script(
+                obj.SourceFile, self._current_params(obj)
+            )
+        except Exception as exc:
+            # Transport-level failure (run timeout, kernel crash, startup
+            # error) — no traceback frames exist, but the editor panel still
+            # needs something to display.
+            self.last_error = [{"file": obj.SourceFile, "line": 0, "text": str(exc)}]
+            raise
         if result.get("stdout"):
             App.Console.PrintMessage(result["stdout"])
         # Kept for the editor panel: last error frames (or None on success).
@@ -193,6 +200,7 @@ class ScriptObjectProxy:
         # v0: multiple shown objects become a compound. Preserving the full
         # assembly hierarchy as child objects is Phase 3 (DESIGN.md §5.4).
         obj.Shape = shapes[0] if len(shapes) == 1 else Part.makeCompound(shapes)
+        self._apply_appearance(obj, result.get("objects", []), shapes)
 
         # The run succeeded — now it's safe to drop params the script no
         # longer declares.
@@ -201,6 +209,42 @@ class ScriptObjectProxy:
 
         if getattr(obj, "AutoWatch", False):
             ensure_watched(obj)
+
+    def _apply_appearance(self, obj, entries: list, shapes: list) -> None:
+        """Names and colors from show(...) land on the document object.
+
+        Label: applied only while the user has never renamed the object
+        (Label still equals the internal Name) — a user rename always wins.
+        Colors: single object -> ShapeColor/Transparency; compound -> one
+        DiffuseColor entry per face, colored per child shape. Headless
+        (no ViewObject) this is a no-op apart from the Label.
+        """
+        from .colors import parse_color
+
+        if len(entries) == 1 and entries[0].get("name"):
+            name = entries[0]["name"]
+            if not name.startswith("object_") and obj.Label == obj.Name:
+                obj.Label = name
+
+        vo = getattr(obj, "ViewObject", None)
+        if vo is None:
+            return
+        colors = [parse_color(e.get("color")) for e in entries]
+        if len(entries) == 1:
+            if colors[0] is not None:
+                vo.ShapeColor = colors[0]
+            alpha = entries[0].get("alpha")
+            if isinstance(alpha, (int, float)) and 0.0 <= alpha <= 1.0:
+                vo.Transparency = int(round((1.0 - alpha) * 100))
+        elif any(c is not None for c in colors):
+            default = tuple(vo.ShapeColor)[:3]
+            diffuse = []
+            # One shape per entry by construction; appearance is advisory, so
+            # never let a mismatch here raise out of a recompute.
+            for sh, color in zip(shapes, colors, strict=False):
+                diffuse.extend([color or default] * len(sh.Faces))
+            if diffuse:
+                vo.DiffuseColor = diffuse
 
     def onChanged(self, obj, prop: str) -> None:
         if prop == "SourceFile" and getattr(obj, "SourceFile", None):

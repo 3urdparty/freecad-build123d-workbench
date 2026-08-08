@@ -115,8 +115,16 @@ crosses the boundary is BREP bytes plus a JSON metadata sidecar.
 - Methods:
   - `kernel.hello() -> {version, python, occt, build123d, cadquery}`
   - `kernel.run(path|source, params, request_id) -> {objects: [...], stdout, stderr, error?}`
-  - `kernel.cancel(request_id)`
   - `kernel.introspect_params(path) -> [{name, type, default, doc}]`
+  - `kernel.complete(source, line, column, path)` / `kernel.signatures(...)`
+
+Runaway scripts: there is deliberately no `kernel.cancel` — a busy `exec()`
+cannot be interrupted from outside. Instead each `kernel.run` is bounded by
+the `RunTimeoutS` preference (default 60 s, 0 = unlimited); on timeout the
+client closes the socket and KILLS the kernel process, the last good shape
+is preserved, and a fresh kernel starts lazily on the next run. Crash
+isolation was designed for exactly this. With editor autosave, a half-typed
+`while True:` is an everyday event, not a corner case.
 - An `error` is a structured traceback: `[{file, line, text}]` so the UI can map
   failures back to editor lines.
 
@@ -262,13 +270,15 @@ another local user cannot drive the kernel. Scripts embedded in `.FCStd` files
 (`SourceInline`) never auto-execute on document open without a per-document
 confirmation, mirroring FreeCAD's macro-security posture.
 
-## 11. Open questions
+## 11. Open questions — resolved status
 
-1. Pin strategy for `build123d`/`cadquery`/OCP in the managed venv — hard pins
-   with an "update environment" button, or ranges? (Leaning: hard pins + button.)
-2. Should `show_object` options (color/alpha) map onto FreeCAD ViewObject
-   properties or stay metadata-only until Phase 2?
-3. Embedded-vs-file scripts as the default for New Script? (Leaning: file-backed,
-   since Tier 1 is external-editor-first.)
+1. **Pin strategy — RESOLVED: hard pins + button.** `package_pins()` defaults
+   to pinned `build123d`/`cadquery` versions (kept in sync with CI); users
+   edit the pins in the preferences page and run "Rebuild kernel environment".
+2. **show_object color/alpha — RESOLVED: applied.** Single object → ViewObject
+   ShapeColor/Transparency; compound → per-face DiffuseColor per child shape;
+   shown name → object Label unless the user has renamed it (user wins).
+3. **Embedded-vs-file scripts — RESOLVED: file-backed** (Tier 1 is
+   external-editor-first; `SourceInline` remains unimplemented).
 4. Whether to expose the kernel to *other* addons (e.g. ocp-freecad-cam could
-   reuse the managed venv) via a small public API.
+   reuse the managed venv) via a small public API — still open.

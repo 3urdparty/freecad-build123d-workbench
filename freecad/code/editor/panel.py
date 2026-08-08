@@ -50,6 +50,7 @@ class _CompletionBridge(QtCore.QObject):
     """Thread-safe hop: worker thread emits, GUI thread shows the popup."""
 
     arrived = QtCore.Signal(list)
+    sigs_arrived = QtCore.Signal(list)
 
 
 class ScriptEditorDock(QtWidgets.QDockWidget):
@@ -105,6 +106,7 @@ class ScriptEditorDock(QtWidgets.QDockWidget):
 
         self._bridge = _CompletionBridge()
         self._bridge.arrived.connect(self.editor.show_completions)
+        self._bridge.sigs_arrived.connect(self.editor.show_signatures)
         self._completion_seq = 0
 
         self._autosave_timer = QtCore.QTimer(self)
@@ -114,6 +116,7 @@ class ScriptEditorDock(QtWidgets.QDockWidget):
         self.editor.run_requested.connect(self._run)
         self.editor.save_requested.connect(self._run)  # Ctrl+S: save + run
         self.editor.completions_wanted.connect(self._fetch_completions)
+        self.editor.signatures_wanted.connect(self._fetch_signatures)
         self.editor.textChanged.connect(self._on_text_changed)
 
         self._load()
@@ -248,4 +251,19 @@ class ScriptEditorDock(QtWidgets.QDockWidget):
                     self._bridge.arrived.emit(items)
                 except RuntimeError:
                     pass  # dock was closed while we were thinking
+        threading.Thread(target=work, daemon=True).start()
+
+    def _fetch_signatures(self, source: str, line: int, column: int) -> None:
+        from ..kernel_manager import KernelManager
+
+        def work():
+            try:
+                sigs = KernelManager.instance().signatures(source, line, column,
+                                                           self._path)
+            except Exception:
+                sigs = []
+            try:
+                self._bridge.sigs_arrived.emit(sigs)
+            except RuntimeError:
+                pass  # dock was closed while we were thinking
         threading.Thread(target=work, daemon=True).start()

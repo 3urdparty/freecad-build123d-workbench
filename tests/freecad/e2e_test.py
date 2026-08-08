@@ -214,6 +214,41 @@ def main() -> None:
     check("recovers after script error", abs(vol(obj) - v1) < 1e-6,
           f"volume={vol(obj):.1f}, expected {v1:.1f}")
 
+    # 5b. Runaway script: an infinite loop must be killed at RunTimeoutS,
+    #     the last good shape preserved, and the next run must succeed on a
+    #     freshly restarted kernel. With editor autosave, a half-typed
+    #     `while True:` is an everyday event.
+    import time as _time
+
+    prefs = App.ParamGet("User parameter:BaseApp/Preferences/Mod/CodeWorkbench")
+    orig_timeout = prefs.GetInt("RunTimeoutS", 60)
+    prefs.SetInt("RunTimeoutS", 3)
+    emit("[e2e] NOTE: the timeout error below is intentional (check 5b)")
+    with open(script, "w", encoding="utf-8") as f:
+        f.write("import time\nwhile True:\n    time.sleep(0.05)\n")
+    t0 = _time.monotonic()
+    obj.touch()
+    doc.recompute()
+    elapsed = _time.monotonic() - t0
+    # Unlimited for the rest of the run (a loaded CI runner must not trip the
+    # budget on a legitimate script); the original value is put back at the
+    # end of main() — this test shares the developer's real config.
+    prefs.SetInt("RunTimeoutS", 0)
+    check("runaway script is stopped near the budget",
+          2.0 <= elapsed < 30.0, f"elapsed={elapsed:.1f}s (budget 3s)")
+    check("runaway script preserves last good shape",
+          abs(vol(obj) - v1) < 1e-6)
+    last_error = getattr(obj.Proxy, "last_error", None)
+    check("timeout reported to the editor surface",
+          bool(last_error) and "exceeded" in last_error[-1].get("text", ""),
+          f"last_error={last_error!r}")
+    with open(script, "w", encoding="utf-8") as f:
+        f.write(source)  # original bracket again
+    obj.touch()
+    doc.recompute()
+    check("fresh kernel serves the next run after a kill",
+          abs(vol(obj) - v1) < 1e-6, f"volume={vol(obj):.1f}")
+
     # 6b. Parameter sync semantics: the script is the source of truth
     #     unless the user overrode a value in the property panel.
     #     State here: obj.length == 100.0 (user override; script default 60),
@@ -308,6 +343,16 @@ def main() -> None:
     else:
         check("cadquery script produces correct geometry",
               abs(cq_volume - 1000.0) < 1e-6, f"volume={cq_volume:.1f}")
+    # 8b. show_object(name=...) becomes the object Label (until the user
+    #     renames it — then the user wins; colors are ViewObject-only and
+    #     need the GUI, so they're covered by unit tests + manual testing).
+    check("shown name becomes the object label",
+          cq_obj.Label == "cq_box", f"label={cq_obj.Label!r}")
+    cq_obj.Label = "my_rename"
+    cq_obj.touch()
+    doc3.recompute()
+    check("user rename beats the shown name",
+          cq_obj.Label == "my_rename", f"label={cq_obj.Label!r}")
 
     # 9. Multiple shown objects arrive as a compound (v0 contract).
     multi_script = os.path.join(tmp, "multi.py")
@@ -325,6 +370,7 @@ def main() -> None:
           f"volume={multi_obj.Shape.Volume:.1f}, type={multi_obj.Shape.ShapeType}")
     App.closeDocument(doc3.Name)
 
+    prefs.SetInt("RunTimeoutS", orig_timeout)
     shutil.rmtree(tmp, ignore_errors=True)
 
 
