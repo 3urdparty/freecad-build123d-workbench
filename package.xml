@@ -2,8 +2,8 @@
 <package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
   <name>Code Workbench</name>
   <description>Work with build123d and CadQuery natively inside FreeCAD: scripts run in an isolated kernel and become real parametric document objects, with hot reload from any external editor.</description>
-  <version>0.1.0</version>
-  <date>2026-08-07</date>
+  <version>0.2.0</version>
+  <date>2026-08-08</date>
   <maintainer email="sol@titles.xyz">sol</maintainer>
   <license file="LICENSE">LGPL-2.1-or-later</license>
   <url type="repository" branch="main">https://github.com/jokroese/freecad-code-workbench</url>
