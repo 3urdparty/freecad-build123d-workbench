@@ -29,6 +29,9 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
     #: emitted with (source, line 1-based, column 0-based) when the user
     #: types '.' or presses Ctrl+Space — the panel answers via the kernel.
     completions_wanted = QtCore.Signal(str, int, int)
+    #: emitted when the user types '(' — the panel answers with signature
+    #: strings from kernel.signatures and calls show_signatures().
+    signatures_wanted = QtCore.Signal(str, int, int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -161,6 +164,10 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
 
         if event.text() == ".":
             self._request_completions()
+        elif event.text() == "(":
+            self._request_signatures()
+        elif event.text() == ")" or key == QtCore.Qt.Key_Escape:
+            QtWidgets.QToolTip.hideText()
         elif popup.isVisible():
             self._refilter_popup()
 
@@ -181,6 +188,27 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
     def _request_completions(self) -> None:
         line, col = self._cursor_pos()
         self.completions_wanted.emit(self.toPlainText(), line, col)
+
+    # -- signature calltips --------------------------------------------------
+
+    def _request_signatures(self) -> None:
+        line, col = self._cursor_pos()
+        self.signatures_wanted.emit(self.toPlainText(), line, col)
+
+    def show_signatures(self, sigs: list) -> None:
+        """Called by the panel when the kernel answers (GUI thread). Shown
+        as a tooltip anchored under the cursor; hidden on ')' or Escape."""
+        if not sigs:
+            return
+        import html
+
+        shown = "<br>".join(html.escape(s) for s in sigs[:3])
+        if len(sigs) > 3:
+            shown += f"<br><i>… and {len(sigs) - 3} more</i>"
+        rect = self.cursorRect()
+        QtWidgets.QToolTip.showText(
+            self.viewport().mapToGlobal(rect.bottomLeft() + QtCore.QPoint(0, 6)),
+            f"<code>{shown}</code>", self)
 
     def show_completions(self, items: list) -> None:
         """Called by the panel when the kernel answers (GUI thread)."""
