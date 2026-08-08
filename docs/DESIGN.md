@@ -115,8 +115,16 @@ crosses the boundary is BREP bytes plus a JSON metadata sidecar.
 - Methods:
   - `kernel.hello() -> {version, python, occt, build123d, cadquery}`
   - `kernel.run(path|source, params, request_id) -> {objects: [...], stdout, stderr, error?}`
-  - `kernel.cancel(request_id)`
   - `kernel.introspect_params(path) -> [{name, type, default, doc}]`
+  - `kernel.complete(source, line, column, path)` / `kernel.signatures(...)`
+
+Runaway scripts: there is deliberately no `kernel.cancel` — a busy `exec()`
+cannot be interrupted from outside. Instead each `kernel.run` is bounded by
+the `RunTimeoutS` preference (default 60 s, 0 = unlimited); on timeout the
+client closes the socket and KILLS the kernel process, the last good shape
+is preserved, and a fresh kernel starts lazily on the next run. Crash
+isolation was designed for exactly this. With editor autosave, a half-typed
+`while True:` is an everyday event, not a corner case.
 - An `error` is a structured traceback: `[{file, line, text}]` so the UI can map
   failures back to editor lines.
 

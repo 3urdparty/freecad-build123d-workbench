@@ -21,6 +21,11 @@ from typing import Any
 
 PROTOCOL_VERSION = 0
 
+# Client-side error codes (the -3200x range mirrors JSON-RPC conventions).
+NOT_CONNECTED = -32000
+CONNECTION_CLOSED = -32001
+CALL_TIMED_OUT = -32002
+
 
 class RpcError(Exception):
     def __init__(self, code: int, message: str, data: Any = None):
@@ -77,24 +82,46 @@ class RpcClient:
     def connected(self) -> bool:
         return self._sock is not None
 
-    def call(self, method: str, **params: Any) -> Any:
-        """Synchronous request/response. One in flight at a time (v0)."""
+    def call(self, method: str, rpc_timeout: float | None = None, **params: Any) -> Any:
+        """Synchronous request/response. One in flight at a time (v0).
+
+        ``rpc_timeout`` bounds THIS call only (seconds); the kernel cannot
+        interrupt a busy exec(), so on timeout the caller must assume the
+        kernel is still running the script and kill the process
+        (KernelManager.run_script does exactly that). Raises RpcError
+        CALL_TIMED_OUT — the socket is closed because a late reply would
+        otherwise desynchronize the next request.
+        """
         if self._sock is None:
-            raise RpcError(-32000, "not connected")
+            raise RpcError(NOT_CONNECTED, "not connected")
         with self._lock:
             self._next_id += 1
             req_id = self._next_id
-            self._sock.sendall(encode_request(req_id, method, params, self.token))
-            while True:
-                line = self._rfile.readline()
-                if not line:
-                    self.close()
-                    raise RpcError(-32001, "kernel closed the connection")
-                msg = decode_message(line)
-                if msg.get("id") != req_id:
-                    # v0 has no server-initiated messages; ignore strays.
-                    continue
-                if "error" in msg:
-                    err = msg["error"]
-                    raise RpcError(err.get("code", -32603), err.get("message", ""), err.get("data"))
-                return msg.get("result")
+            effective = rpc_timeout if rpc_timeout is not None else self.timeout
+            self._sock.settimeout(effective)
+            try:
+                self._sock.sendall(encode_request(req_id, method, params, self.token))
+                while True:
+                    try:
+                        line = self._rfile.readline()
+                    except TimeoutError:  # socket.timeout is an alias since 3.10
+                        self.close()
+                        raise RpcError(
+                            CALL_TIMED_OUT,
+                            f"no reply from the kernel after {effective:.0f}s",
+                        ) from None
+                    if not line:
+                        self.close()
+                        raise RpcError(CONNECTION_CLOSED, "kernel closed the connection")
+                    msg = decode_message(line)
+                    if msg.get("id") != req_id:
+                        # v0 has no server-initiated messages; ignore strays.
+                        continue
+                    if "error" in msg:
+                        err = msg["error"]
+                        raise RpcError(err.get("code", -32603), err.get("message", ""),
+                                       err.get("data"))
+                    return msg.get("result")
+            finally:
+                if self._sock is not None:
+                    self._sock.settimeout(self.timeout)

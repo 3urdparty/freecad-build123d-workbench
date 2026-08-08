@@ -164,9 +164,16 @@ class ScriptObjectProxy:
         # reflects them; removals commit after the run succeeds.
         declared = self._sync_parameters(obj)
 
-        result = KernelManager.instance().run_script(
-            obj.SourceFile, self._current_params(obj)
-        )
+        try:
+            result = KernelManager.instance().run_script(
+                obj.SourceFile, self._current_params(obj)
+            )
+        except Exception as exc:
+            # Transport-level failure (run timeout, kernel crash, startup
+            # error) — no traceback frames exist, but the editor panel still
+            # needs something to display.
+            self.last_error = [{"file": obj.SourceFile, "line": 0, "text": str(exc)}]
+            raise
         if result.get("stdout"):
             App.Console.PrintMessage(result["stdout"])
         # Kept for the editor panel: last error frames (or None on success).

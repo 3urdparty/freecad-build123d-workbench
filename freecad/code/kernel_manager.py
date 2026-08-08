@@ -17,7 +17,7 @@ import threading
 
 import FreeCAD as App  # type: ignore[import-not-found]
 
-from . import preferences
+from . import preferences, rpc
 from .rpc import RpcClient, RpcError
 
 HANDSHAKE_PREFIX = "FC_CODE_KERNEL PORT="
@@ -276,12 +276,33 @@ class KernelManager:
 
         Result shape: {objects: [{name, brep_b64, color, alpha}], stdout,
         stderr, error: null | [{file, line, text}]}
+
+        Runs are bounded by the RunTimeoutS preference (0 = unlimited): a
+        busy exec() cannot be interrupted from outside, so a run that
+        exceeds the budget gets its kernel process KILLED — the next run
+        starts a fresh kernel lazily. With autosave in the editor, a
+        half-typed `while True:` is an everyday event, not a corner case.
         """
         self._ensure_started_sync()
         assert self._client is not None
+        timeout_s = preferences.run_timeout_s()
+        rpc_timeout = float(timeout_s) if timeout_s > 0 else None
         try:
-            return self._client.call("kernel.run", path=path, params=params)
+            return self._client.call("kernel.run", rpc_timeout=rpc_timeout,
+                                     path=path, params=params)
         except Exception as exc:
+            if isinstance(exc, RpcError) and exc.code == rpc.CALL_TIMED_OUT:
+                # The kernel is still busy running the script — kill it.
+                # Deliberately NO retry: re-running a hanging script would
+                # hang again and double the stall.
+                _warn(f"script run exceeded {timeout_s}s; stopping the kernel…")
+                self.stop()
+                raise RpcError(
+                    rpc.CALL_TIMED_OUT,
+                    f"script run exceeded {timeout_s}s and was stopped "
+                    f"(RunTimeoutS preference); the kernel restarts on the "
+                    f"next run",
+                ) from None
             # Server-reported errors (bad params, method-level failure) come
             # back over a healthy connection — surface them. Everything else,
             # INCLUDING the connection-class RpcErrors (-32000 "not
@@ -293,7 +314,8 @@ class KernelManager:
             _warn(f"kernel connection lost ({exc}); restarting…")
             self.restart()
             assert self._client is not None
-            return self._client.call("kernel.run", path=path, params=params)
+            return self._client.call("kernel.run", rpc_timeout=rpc_timeout,
+                                     path=path, params=params)
 
     def introspect_params(self, path: str) -> list:
         self._ensure_started_sync()

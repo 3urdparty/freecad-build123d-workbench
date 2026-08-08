@@ -13,6 +13,13 @@ def debounce_ms() -> int:
     return _grp().GetInt("DebounceMs", 200)
 
 
+def run_timeout_s() -> int:
+    """Hard budget for a single script run, seconds. 0 disables the bound.
+    On timeout the kernel process is killed and restarts on the next run —
+    exec() cannot be interrupted from outside."""
+    return _grp().GetInt("RunTimeoutS", 60)
+
+
 def autosave_enabled() -> bool:
     """Embedded editor: save + re-run automatically while typing."""
     return _grp().GetBool("AutosaveEnabled", True)
