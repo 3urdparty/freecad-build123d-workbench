@@ -14,10 +14,9 @@ from __future__ import annotations
 import threading
 import time
 
+import FreeCAD as App  # type: ignore[import-not-found]
 import FreeCADGui as Gui  # type: ignore[import-not-found]
 from PySide import QtCore, QtWidgets  # FreeCAD's PySide shim
-
-import FreeCAD as App  # type: ignore[import-not-found]
 
 from .. import preferences
 from .code_editor import CodeEditor

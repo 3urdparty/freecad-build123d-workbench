@@ -23,6 +23,16 @@ from .rpc import RpcClient, RpcError
 HANDSHAKE_PREFIX = "FC_CODE_KERNEL PORT="
 TOKEN_ENV = "FC_CODE_KERNEL_TOKEN"
 
+# Python version for the kernel's managed environment. The kernel only ever
+# talks JSON-RPC to FreeCAD, so this does NOT need to match FreeCAD's own
+# interpreter — and it deliberately must not BE FreeCAD's interpreter: a venv
+# seeded from a conda/bundled python inherits C extensions (pyexpat, ...)
+# built against that distribution's private shared libraries, which stop
+# resolving inside the kernel process (e.g. conda-forge pyexpat needing
+# XML_SetAllocTrackerActivationThreshold from a newer libexpat than the one
+# the loader finds). uv provisions a standalone CPython instead.
+KERNEL_PYTHON = "3.12"
+
 # FreeCAD exports these into its own process environment (PYTHONHOME points
 # at the .app bundle's Resources). Any subprocess that runs a *different*
 # Python — the kernel venv, uv's build backend — inherits them and dies with
@@ -113,7 +123,13 @@ class KernelManager:
         uv = shutil.which("uv")
         _log(f"provisioning kernel environment at {env_dir} (first run)…")
         if uv:
-            subprocess.run([uv, "venv", env_dir], check=True, env=clean)
+            # only-managed: never seed the venv from FreeCAD's/conda's own
+            # python (see KERNEL_PYTHON above); uv downloads and caches a
+            # standalone CPython on first run.
+            subprocess.run(
+                [uv, "venv", "--python", KERNEL_PYTHON, env_dir], check=True,
+                env={**clean, "UV_PYTHON_PREFERENCE": "only-managed"},
+            )
             pip_prefix = [uv, "pip", "install", "--python", python]
         else:
             # Use *a* system python; FreeCAD's embedded interpreter may not
@@ -124,9 +140,47 @@ class KernelManager:
         requirements = [r.strip() for r in preferences.package_pins().splitlines() if r.strip()]
         kernel_src = os.path.join(_addon_root(), "kernel")
         subprocess.run([*pip_prefix, "-e", kernel_src, *requirements], check=True, env=clean)
+        self._prefer_vtk_ocp(python, clean, uv)
         with open(self._sentinel(), "w", encoding="utf-8") as f:
             f.write("ok\n")
         _log("kernel environment ready.")
+
+    def _prefer_vtk_ocp(self, python: str, clean: dict, uv: str | None) -> None:
+        """Put the VTK-enabled OCP back when both variants land in the env.
+
+        build123d requires cadquery-ocp-novtk, cadquery requires the
+        VTK-enabled cadquery-ocp, and both wheels ship the same
+        OCP/OCP.<abi>.so — so whichever the installer writes last decides
+        what is importable. When novtk wins, `import cadquery` fails inside
+        OCP.IVtkOCC (whose shim swallows the error and prints "VTK not
+        installed"). build123d is happy with the VTK build, it being a
+        superset, so reinstall that one last.
+
+        novtk is deliberately left installed: its RECORD lists the very
+        files this restores, so uninstalling it would delete them again.
+        """
+        probe = [python, "-c", "import cadquery"]
+        first = subprocess.run(probe, env=clean, capture_output=True, text=True)
+        if first.returncode == 0 or "IVtkOCC" not in first.stderr:
+            return  # cadquery absent, or failing for an unrelated reason
+        version = subprocess.run(
+            [python, "-c", "import importlib.metadata as m; print(m.version('cadquery-ocp'))"],
+            env=clean, capture_output=True, text=True,
+        ).stdout.strip()
+        if not version:
+            _log("cadquery cannot import and cadquery-ocp is not installed; leaving as is.")
+            return
+        _log(f"reinstalling cadquery-ocp=={version} so its VTK bindings win over novtk…")
+        if uv:
+            cmd = [uv, "pip", "install", "--python", python,
+                   "--reinstall-package", "cadquery-ocp", f"cadquery-ocp=={version}"]
+        else:
+            cmd = [python, "-m", "pip", "install", "--force-reinstall", "--no-deps",
+                   f"cadquery-ocp=={version}"]
+        subprocess.run(cmd, check=True, env=clean)
+        again = subprocess.run(probe, env=clean, capture_output=True, text=True)
+        if again.returncode:
+            _log("cadquery still fails to import:\n" + again.stderr.strip())
 
     # -- process lifecycle ---------------------------------------------------
 
@@ -227,11 +281,16 @@ class KernelManager:
         assert self._client is not None
         try:
             return self._client.call("kernel.run", path=path, params=params)
-        except RpcError:
-            raise
-        except Exception:
-            # Connection died (kernel crash) — one restart attempt.
-            _warn("kernel connection lost; restarting…")
+        except Exception as exc:
+            # Server-reported errors (bad params, method-level failure) come
+            # back over a healthy connection — surface them. Everything else,
+            # INCLUDING the connection-class RpcErrors (-32000 "not
+            # connected", -32001 "kernel closed the connection" — a clean EOF
+            # is exactly what an OOM-killed or crashed kernel looks like),
+            # means the kernel is gone: one restart attempt.
+            if isinstance(exc, RpcError) and exc.code not in (-32000, -32001):
+                raise
+            _warn(f"kernel connection lost ({exc}); restarting…")
             self.restart()
             assert self._client is not None
             return self._client.call("kernel.run", path=path, params=params)

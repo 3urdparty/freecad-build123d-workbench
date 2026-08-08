@@ -9,8 +9,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9.0.0
       - run: uvx ruff check .
 
   # Fast tests: RPC protocol + executor. No OCP, no FreeCAD.
@@ -20,8 +20,8 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install pytest
@@ -31,15 +31,39 @@ jobs:
   kernel-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: pip install pytest build123d cadquery -e ./kernel
       - run: pytest tests/ -v
 
-  # Workbench tests headless inside FreeCAD (BREP import, ScriptObject).
-  # TODO(phase 1): add tests/freecad/ and run them via FreeCADCmd, e.g.:
-  #   container: ghcr.io/freecad/freecad:1.1
-  #   run: FreeCADCmd -t tests/freecad/run_all.py
-  # Kept as a stub so the matrix shape is visible from day one.
+  # Full end-to-end, headless inside real FreeCAD: script -> kernel (venv
+  # provisioned for real) -> BREP -> parametric object -> recompute paths.
+  freecad-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # The kernel's OCP wheels link libGL, which the headless runner images
+      # do not ship. Without it every geometry script dies at `import
+      # build123d` and each check fails for a reason that looks nothing like
+      # a missing system library.
+      - run: sudo apt-get update && sudo apt-get install -y libgl1
+      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: mamba-org/setup-micromamba@v3
+        with:
+          environment-name: fc
+          create-args: >-
+            -c conda-forge
+            freecad=1.0
+            python=3.11
+      - run: micromamba run -n fc bash tests/freecad/run_e2e.sh
+        timeout-minutes: 20
+      # An abnormal exit is most likely resource pressure: the kernel env
+      # pulls both cadquery-ocp variants plus vtk. Say so out loud instead of
+      # leaving the next reader to guess.
+      - if: failure()
+        run: |
+          df -h /
+          free -m
+          sudo dmesg 2>/dev/null | tail -30 || true

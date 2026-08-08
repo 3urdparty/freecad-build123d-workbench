@@ -11,5 +11,17 @@ ignore = [
   "E402",  # tests adjust sys.path before imports by design
 ]
 
+[tool.ruff.lint.isort]
+# FreeCAD's interpreter supplies these; they are third party to us. Spell it
+# out because this repo has a `freecad/` package: on a case-insensitive
+# filesystem ruff matches `FreeCAD` against that directory and calls it
+# first party, so import order that lints clean on macOS fails on Linux CI.
+known-third-party = ["FreeCAD", "FreeCADGui", "Part", "PySide"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# tests/freecad/ holds scripts for FreeCAD's own interpreter (they import
+# FreeCAD at module scope), not pytest modules. Run them via
+# tests/freecad/run_e2e.sh; keep plain pytest out so collection cannot fail
+# on a missing FreeCAD.
+norecursedirs = ["tests/freecad"]

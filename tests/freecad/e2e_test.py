@@ -15,7 +15,9 @@ is a GUI-only convenience on top of exactly this path.
 
 Prints one PASS/FAIL line per check and a final "E2E RESULT: PASS|FAIL"
 marker (run_e2e.sh greps for it — freecadcmd does not reliably propagate
-exit codes across versions).
+exit codes across versions). Set FC_CODE_E2E_LOG to also write those lines
+to a file, which is how run_e2e.sh reads the result: freecadcmd's stdout is
+discarded outright by some builds when it is not a tty.
 """
 
 import os
@@ -39,16 +41,109 @@ _pkg_dir = os.path.join(ADDON, "freecad")
 if _pkg_dir in freecad.__path__:
     freecad.__path__.remove(_pkg_dir)
 freecad.__path__.insert(0, _pkg_dir)
-print(f"[e2e] addon package resolved from: {freecad.__path__[0]}")
 
 _failures = []
+
+# freecadcmd's stdout is not dependable when it is not a tty: the
+# conda-forge Linux build drops it wholesale — banner, prints and all — so a
+# run that passed looks identical to one that never started. Mirror every
+# line into FC_CODE_E2E_LOG when it is set (run_e2e.sh does) and let that
+# file, not stdout, be what decides the result. Line-buffered so a crash
+# still leaves everything printed so far.
+_log_file = None
+if os.environ.get("FC_CODE_E2E_LOG"):
+    _log_file = open(os.environ["FC_CODE_E2E_LOG"], "w", encoding="utf-8", buffering=1)
+
+
+def emit(line: str) -> None:
+    try:
+        print(line)
+    except UnicodeEncodeError:  # ascii-pipe stdout must not kill the run
+        print(line.encode("ascii", "backslashreplace").decode("ascii"))
+    if _log_file is not None:
+        _log_file.write(line + "\n")
+
+
+# CI never reliably shows FreeCAD's console (stdout/stderr handling differs
+# per build), so recompute errors and "[Code] ..." warnings vanish exactly
+# when they matter most. Tee every console channel into the verdict stream.
+def _tee_console() -> None:
+    for chan in ("PrintMessage", "PrintWarning", "PrintError"):
+        orig = getattr(App.Console, chan, None)
+        if orig is None:
+            continue
+
+        def _wrap(msg, _orig=orig, _chan=chan):
+            emit(f"[console:{_chan[5:].lower()}] {str(msg).rstrip()}")
+            try:
+                _orig(msg)
+            except Exception:
+                pass
+
+        try:
+            setattr(App.Console, chan, _wrap)
+        except Exception:
+            pass  # console not patchable on this build — lose nothing
+
+
+_tee_console()
+
+
+emit(f"[e2e] addon package resolved from: {freecad.__path__[0]}")
 
 
 def check(name: str, cond: bool, detail: str = "") -> None:
     status = "PASS" if cond else "FAIL"
-    print(f"[e2e] {status}: {name}" + (f"  ({detail})" if detail else ""))
+    emit(f"[e2e] {status}: {name}" + (f"  ({detail})" if detail else ""))
     if not cond:
         _failures.append(name)
+
+
+def vol(o) -> float:
+    """Shape volume, 0.0 for a missing/null shape — a shapeless object must
+    fail its checks, not abort the whole run with 'shape is invalid'."""
+    try:
+        s = o.Shape
+        return 0.0 if s is None or s.isNull() else s.Volume
+    except Exception:
+        return 0.0
+
+
+def warmup() -> None:
+    """First CAD import in the kernel, timed and reported on its own.
+
+    The first kernel.run pays the cold `from build123d import *` (hundreds of
+    MB of shared objects) — on a resource-starved CI runner that is exactly
+    when the kernel dies, and the failure used to surface two checks later as
+    "script produces a shape FAIL" with the real error dropped along with the
+    console. Running it explicitly makes the verdict name the true culprit.
+    """
+    import time
+
+    from freecad.code.kernel_manager import KernelManager
+
+    wu_dir = tempfile.mkdtemp(prefix="fc_code_e2e_wu_")
+    wu = os.path.join(wu_dir, "warmup.py")
+    with open(wu, "w", encoding="utf-8") as f:
+        f.write("from build123d import *\n"
+                "import cadquery  # noqa: F401\n"
+                "show(Box(1, 1, 1))\n")
+    t0 = time.monotonic()
+    try:
+        result = KernelManager.instance().run_script(wu, {})
+    except Exception as exc:
+        check("kernel warmup (first CAD import)", False,
+              f"{type(exc).__name__}: {exc} after {time.monotonic() - t0:.1f}s")
+        shutil.rmtree(wu_dir, ignore_errors=True)
+        return
+    detail = f"{time.monotonic() - t0:.1f}s"
+    if result.get("error"):
+        detail += f", error: {result['error']}"
+    if result.get("stderr"):
+        emit(f"[e2e] warmup stderr: {result['stderr'].strip()}")
+    check("kernel warmup (first CAD import)",
+          not result.get("error") and bool(result.get("objects")), detail)
+    shutil.rmtree(wu_dir, ignore_errors=True)
 
 
 def main() -> None:
@@ -65,8 +160,12 @@ def main() -> None:
     obj = make_script_object(doc, script)
     has_shape = obj.Shape is not None and not obj.Shape.isNull()
     check("script produces a shape", has_shape)
-    v0 = obj.Shape.Volume if has_shape else 0.0
+    v0 = vol(obj)
     check("shape has positive volume", v0 > 0, f"volume={v0:.1f}")
+    if not has_shape or v0 <= 0:
+        proxy = getattr(obj, "Proxy", None)
+        emit(f"[e2e] first-run diagnostics: state={list(obj.State)!r}, "
+             f"last_error={getattr(proxy, 'last_error', '<unset>')!r}")
 
     # 2. Declared parameters surfaced as FreeCAD properties.
     check("parameters surfaced as properties",
@@ -78,7 +177,7 @@ def main() -> None:
     obj.length = 100.0
     obj.touch()
     doc.recompute()
-    v1 = obj.Shape.Volume
+    v1 = vol(obj)
     check("parameter change recomputes geometry", v1 > v0 * 1.3,
           f"{v0:.1f} -> {v1:.1f}")
 
@@ -94,26 +193,26 @@ def main() -> None:
         f.write(source.replace("radius=4", "radius=1"))
     obj.touch()
     doc.recompute()
-    v2 = obj.Shape.Volume
+    v2 = vol(obj)
     check("file edit recomputes geometry", v2 > v1, f"{v1:.1f} -> {v2:.1f}")
 
     # 5. A broken script must not crash FreeCAD or destroy the last good
     #    shape — the error is reported and the object keeps its geometry.
-    print("[e2e] NOTE: the recompute error below is intentional (check 5)")
+    emit("[e2e] NOTE: the recompute error below is intentional (check 5)")
     with open(script, "w", encoding="utf-8") as f:
         f.write("raise RuntimeError('intentional e2e failure')\n")
     obj.touch()
     doc.recompute()
     check("script error preserves last good shape",
-          abs(obj.Shape.Volume - v2) < 1e-9)
+          abs(vol(obj) - v2) < 1e-9)
 
     # 6. Kernel survives and recovers: restore a good script and re-run.
     with open(script, "w", encoding="utf-8") as f:
         f.write(source)  # original bracket
     obj.touch()
     doc.recompute()
-    check("recovers after script error", abs(obj.Shape.Volume - v1) < 1e-6,
-          f"volume={obj.Shape.Volume:.1f}, expected {v1:.1f}")
+    check("recovers after script error", abs(vol(obj) - v1) < 1e-6,
+          f"volume={vol(obj):.1f}, expected {v1:.1f}")
 
     # 6b. Parameter sync semantics: the script is the source of truth
     #     unless the user overrode a value in the property panel.
@@ -140,7 +239,7 @@ def main() -> None:
     check("undeclared params removed from properties",
           not hasattr(obj, "thickness") and not hasattr(obj, "hole_d"))
     check("geometry reflects script-edited param",
-          obj.Shape.Volume > v1, f"{v1:.1f} -> {obj.Shape.Volume:.1f}")
+          vol(obj) > v1, f"{v1:.1f} -> {vol(obj):.1f}")
 
     # 6c. Override visibility: property tooltips state the status, and
     #     overridden_params reports exactly the shadowed ones.
@@ -160,14 +259,14 @@ def main() -> None:
     #    "results are real document objects" claim, tested.
     fcstd = os.path.join(tmp, "e2e.FCStd")
     obj_name = obj.Name
-    v_saved = obj.Shape.Volume
+    v_saved = vol(obj)
     doc.saveAs(fcstd)
     App.closeDocument(doc.Name)
     doc2 = App.openDocument(fcstd)
     obj2 = doc2.getObject(obj_name)
     check("object survives save/reload", obj2 is not None)
     check("shape survives save/reload",
-          obj2 is not None and abs(obj2.Shape.Volume - v_saved) < 1e-6)
+          obj2 is not None and abs(vol(obj2) - v_saved) < 1e-6)
     check("parameter values survive save/reload",
           getattr(obj2, "length", None) == 100.0,
           f"length={getattr(obj2, 'length', None)}")
@@ -176,8 +275,8 @@ def main() -> None:
         obj2.touch()
         doc2.recompute()
         check("recomputes through kernel after reload",
-              0 < obj2.Shape.Volume < v_saved,
-              f"volume={obj2.Shape.Volume:.1f}")
+              0 < vol(obj2) < v_saved,
+              f"volume={vol(obj2):.1f}")
         # Reset clears overrides (override state survived the reload).
         from freecad.code.feature import reset_params_to_script
 
@@ -200,9 +299,15 @@ def main() -> None:
         )
     doc3 = App.newDocument("E2E_CQ")
     cq_obj = make_script_object(doc3, cq_script)
-    check("cadquery script produces correct geometry",
-          abs(cq_obj.Shape.Volume - 1000.0) < 1e-6,
-          f"volume={cq_obj.Shape.Volume:.1f}")
+    try:
+        cq_volume = cq_obj.Shape.Volume
+    except Exception as exc:
+        # A missing shape is this check failing, not the harness breaking —
+        # keep going so the remaining checks still report.
+        check("cadquery script produces correct geometry", False, f"no shape: {exc}")
+    else:
+        check("cadquery script produces correct geometry",
+              abs(cq_volume - 1000.0) < 1e-6, f"volume={cq_volume:.1f}")
 
     # 9. Multiple shown objects arrive as a compound (v0 contract).
     multi_script = os.path.join(tmp, "multi.py")
@@ -224,6 +329,7 @@ def main() -> None:
 
 
 try:
+    warmup()
     main()
 except Exception as exc:  # infrastructure failure, not a check failure
     import traceback
@@ -231,5 +337,5 @@ except Exception as exc:  # infrastructure failure, not a check failure
     traceback.print_exc()
     _failures.append(f"unhandled exception: {exc}")
 
-print(f"E2E RESULT: {'FAIL' if _failures else 'PASS'}"
-      + (f"  failed: {_failures}" if _failures else ""))
+emit(f"E2E RESULT: {'FAIL' if _failures else 'PASS'}"
+     + (f"  failed: {_failures}" if _failures else ""))

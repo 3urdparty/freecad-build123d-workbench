@@ -10,9 +10,8 @@ from __future__ import annotations
 
 import base64
 
-import Part  # type: ignore[import-not-found]
-
 import FreeCAD as App  # type: ignore[import-not-found]
+import Part  # type: ignore[import-not-found]
 
 PARAM_GROUP = "Parameters"
 
