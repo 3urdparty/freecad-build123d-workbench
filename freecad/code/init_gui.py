@@ -25,6 +25,14 @@ class CodeWorkbench(Gui.Workbench):
         self._command_names = commands.register_all()
         self.appendToolbar("Code", self._command_names)
         self.appendMenu("&Code", self._command_names)
+        try:
+            from .prefs_page import CodePreferencesPage
+
+            Gui.addPreferencePage(CodePreferencesPage, "Code Workbench")
+        except Exception as exc:  # preferences are a convenience, not load-bearing
+            import FreeCAD as App
+
+            App.Console.PrintWarning(f"[Code] preferences page unavailable: {exc}\n")
 
     def Activated(self):
         from .kernel_manager import KernelManager
