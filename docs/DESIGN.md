@@ -272,8 +272,9 @@ confirmation, mirroring FreeCAD's macro-security posture.
 
 ## 11. Open questions — resolved status
 
-1. Pin strategy for `build123d`/`cadquery`/OCP in the managed venv — hard pins
-   with an "update environment" button, or ranges? (Leaning: hard pins + button.)
+1. **Pin strategy — RESOLVED: hard pins + button.** `package_pins()` defaults
+   to pinned `build123d`/`cadquery` versions (kept in sync with CI); users
+   edit the pins in the preferences page and run "Rebuild kernel environment".
 2. **show_object color/alpha — RESOLVED: applied.** Single object → ViewObject
    ShapeColor/Transparency; compound → per-face DiffuseColor per child shape;
    shown name → object Label unless the user has renamed it (user wins).
