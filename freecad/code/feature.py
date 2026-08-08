@@ -172,7 +172,12 @@ class ScriptObjectProxy:
             # Transport-level failure (run timeout, kernel crash, startup
             # error) — no traceback frames exist, but the editor panel still
             # needs something to display.
-            self.last_error = [{"file": obj.SourceFile, "line": 0, "text": str(exc)}]
+            self.last_error = [{
+                "file": obj.SourceFile,
+                "line": 0,
+                "message": str(exc),
+                "text": str(exc),
+            }]
             raise
         if result.get("stdout"):
             App.Console.PrintMessage(result["stdout"])
@@ -184,7 +189,7 @@ class ScriptObjectProxy:
             raise RuntimeError(
                 "script failed at {file}:{line}: {text}".format(
                     file=loc.get("file", "?"), line=loc.get("line", "?"),
-                    text=loc.get("text", ""))
+                    text=loc.get("message") or loc.get("text", ""))
             )
 
         shapes = []

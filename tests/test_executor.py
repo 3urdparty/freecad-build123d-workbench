@@ -35,6 +35,35 @@ def test_no_params_block(tmp_path):
     assert introspect_params(str(script)) == []
 
 
+def test_syntax_error_maps_to_script_line(tmp_path):
+    # SyntaxError locations live in exception attributes, not stack frames —
+    # the naive traceback pointed users at the kernel's own ast.py.
+    script = tmp_path / "s.py"
+    script.write_text("x = 1\nwith Foo() as bar\n    pass\n")  # missing ':'
+    result = run_script(path=str(script), source=None, params={})
+    assert result["error"] is not None
+    frame = result["error"][-1]
+    assert frame["file"] == str(script)
+    assert frame["line"] == 2
+    assert frame["column"] > 0
+    assert frame["message"].startswith("SyntaxError:")
+    assert frame["code"] == "with Foo() as bar"
+    assert "SyntaxError" in frame["text"]
+    assert "ast.py" not in frame["text"]
+
+
+def test_syntax_error_with_params_also_maps(tmp_path):
+    # The params path parses via ast.parse (introspection + strip) — same
+    # attribute-based location handling must apply there.
+    script = tmp_path / "s.py"
+    script.write_text("length = 1.0\nPARAMS = ['length']\ndef broken(:\n")
+    result = run_script(path=str(script), source=None, params={"length": 2.0})
+    assert result["error"] is not None
+    frame = result["error"][-1]
+    assert frame["file"] == str(script)
+    assert frame["line"] == 3
+
+
 def test_run_captures_stdout_and_error(tmp_path):
     script = tmp_path / "s.py"
     script.write_text("print('hello')\nraise ValueError('boom')\n")
@@ -44,6 +73,8 @@ def test_run_captures_stdout_and_error(tmp_path):
     last = result["error"][-1]
     assert last["file"] == str(script)
     assert last["line"] == 2
+    assert last["message"] == "ValueError: boom"
+    assert last["code"] == "raise ValueError('boom')"
     assert "ValueError: boom" in last["text"]
     assert result["objects"] == []
 

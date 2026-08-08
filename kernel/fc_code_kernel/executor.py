@@ -164,17 +164,46 @@ def _looks_like_cad_object(value: Any) -> bool:
 
 def _structured_traceback(script_filename: str) -> list[dict]:
     """Traceback frames as [{file, line, text}], innermost last, trimmed to
-    frames inside the user's script where possible."""
+    frames inside the user's script where possible.
+
+    SyntaxError needs its own path: the error location lives in exception
+    ATTRIBUTES (filename/lineno/text), not in stack frames — the frames
+    point at the compile()/ast.parse() call inside THIS package, so the
+    generic path would tell the user their bug is in the kernel's ast.py.
+    """
     import sys
 
+    _, exc, _ = sys.exc_info()
     tb = traceback.TracebackException(*sys.exc_info())
     exc_text = "".join(tb.format_exception_only()).strip()
+
+    if isinstance(exc, SyntaxError) and exc.filename == script_filename:
+        code_text = (exc.text or "").strip()
+        message = exc_text.splitlines()[-1]
+        return [{
+            "file": script_filename,
+            "line": exc.lineno or 0,
+            "column": max(0, (exc.offset or 1) - 1),
+            "end_line": exc.end_lineno or exc.lineno or 0,
+            "end_column": max(0, (exc.end_offset or exc.offset or 1) - 1),
+            "code": code_text,
+            "message": message,
+            # Backward-compatible summary for older workbench clients.
+            "text": f"{code_text}  ({message})".strip(),
+        }]
+
     frames = [
-        {"file": fr.filename, "line": fr.lineno or 0, "text": (fr.line or "").strip()}
+        {
+            "file": fr.filename,
+            "line": fr.lineno or 0,
+            "code": (fr.line or "").strip(),
+            "text": (fr.line or "").strip(),
+        }
         for fr in tb.stack
     ]
     script_frames = [f for f in frames if f["file"] == script_filename]
     out = script_frames or frames or [{"file": script_filename, "line": 0, "text": ""}]
     last = out[-1]
+    last["message"] = exc_text
     last["text"] = f"{last['text']}  ({exc_text})" if last["text"] else exc_text
     return out
