@@ -97,9 +97,12 @@ crosses the boundary is BREP bytes plus a JSON metadata sidecar.
 
 - Locates or creates the managed venv under FreeCAD's user app-data directory
   (`App.getUserAppDataDir()/CodeWorkbench/env`).
-- Provisions with `uv` when available (fast, reproducible), falling back to
-  `python -m venv` + `pip`. Installs the `fc-code-kernel` package plus
-  `build123d` / `cadquery` at pinned-compatible versions.
+- Provisions with `uv` when available (fast, reproducible), including explicit
+  Homebrew/user-local discovery for GUI launches whose `PATH` is minimal.
+  Falls back only to a compatible system Python (3.10+), never FreeCAD's
+  embedded interpreter. Installs the `fc-code-kernel` package plus `build123d`
+  / `cadquery` at pinned-compatible versions, and reports captured installer
+  stderr when provisioning fails.
 - Spawns the kernel subprocess (`python -m fc_code_kernel --port 0`), reads the
   bound port from its stdout handshake, maintains the RPC connection.
 - Restarts on crash with backoff; surfaces kernel stderr in FreeCAD's Report view.
@@ -193,6 +196,14 @@ system behind it. This is most of the value for a fraction of the effort.
 
 **Tier 2 (Phase 2): embedded editor — native Qt + kernel-side jedi.**
 
+The embedded editor is deliberately a focused, single-script CAD editor: it
+supports the tight edit → recompute → inspect loop without trying to reproduce
+a general-purpose IDE. Multi-file navigation, refactoring, source control,
+plugin ecosystems, and deeply configurable editing remain the job of Tier 1.
+This is a product boundary as well as a maintenance boundary; features such as
+multi-cursor editing, folding, snippets, and rename should trigger a fresh
+off-the-shelf-editor evaluation rather than being implemented ad hoc here.
+
 The original draft proposed Monaco in a `QWebEngineView`. Research (2026-08,
 verified empirically against the official FreeCAD 1.0.2 bundle) killed that
 and every other off-the-shelf option:
@@ -228,8 +239,17 @@ numbers, Python syntax highlighting, auto-indent, completion popup fed
 asynchronously (worker thread → Qt signal, stale answers dropped), Ctrl+Enter
 run, Ctrl+S save. The dock panel (one per ScriptObject, opened by command or
 double-click) saves through the filesystem so the Tier-1 watcher machinery is
-reused unchanged, and maps kernel tracebacks to a highlighted error line via
-the proxy's `last_error`.
+reused unchanged.
+
+Execution failures cross the editor boundary as backend-neutral, versioned
+diagnostics (`editor/diagnostics.py`): file, source range, severity, message,
+traceback, source, and document version. The native widget renders these as
+gutter markers and wave underlines; hover shows the cause and traceback, and a
+click opens a selectable/copyable inspector. A future CodeMirror or Monaco
+frontend should consume this same model rather than teaching the dock about a
+second editor API. Results are only attached to the exact document revision
+that produced them, preventing stale watcher/autosave errors from marking new
+text.
 
 ## 7. Packaging and distribution
 
@@ -255,11 +275,19 @@ the proxy's `last_error`.
 
 ## 9. Phased roadmap
 
-| Phase | Scope | Outcome |
-|---|---|---|
-| **1** | Kernel + venv provisioning, RPC, BREP bridge, ScriptObject, hot reload, minimal toolbar | build123d/CQ models as parametric FreeCAD objects; external-editor workflow end to end |
-| **2** | Embedded Monaco + LSP editor, traceback line-mapping UI, parameter panel polish | One-window experience for users who want it |
-| **3** | Bidirectional selection (3D pick ↔ code line, via subshape provenance in metadata), subshape-stability hashing, richer assembly metadata | The "magical" tier; toponaming mitigation |
+| Phase | Scope | Outcome | Status |
+|---|---|---|---|
+| **1** | Kernel + venv provisioning, RPC, BREP bridge, ScriptObject, hot reload, minimal toolbar | build123d/CQ models as parametric FreeCAD objects; external-editor workflow end to end | ✅ shipped (0.1.0) |
+| **2** | Embedded editor (native Qt + kernel jedi — see §6), traceback line-mapping, autosave with last-valid-model, parameter override semantics + visibility, run timeout, names/colors, calltips, preferences page, pinned kernel packages | One-window experience; safe-by-default iteration loop | ✅ shipped (0.2.0) |
+| **3** | Assembly hierarchy as child objects (today: compound), bidirectional selection (3D pick ↔ code line, via subshape provenance in metadata), subshape-stability hashing (toponaming mitigation), kernel API for other addons | The "magical" tier | ⬜ not started |
+
+Known engineering debt, tracked outside the phases: the GUI thread still
+blocks for the duration of a run (bounded by RunTimeoutS, but a long legit
+model is still a stall — the structural fix is an async execute, which cuts
+against FreeCAD's synchronous recompute model and needs design); RPC is one
+request in flight, so editor completions queue behind a running script;
+BREP rides as base64 in JSON (revisit when large assemblies hurt); one icon
+serves every command.
 
 ## 10. Security considerations
 
