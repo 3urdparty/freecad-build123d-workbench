@@ -193,6 +193,14 @@ system behind it. This is most of the value for a fraction of the effort.
 
 **Tier 2 (Phase 2): embedded editor — native Qt + kernel-side jedi.**
 
+The embedded editor is deliberately a focused, single-script CAD editor: it
+supports the tight edit → recompute → inspect loop without trying to reproduce
+a general-purpose IDE. Multi-file navigation, refactoring, source control,
+plugin ecosystems, and deeply configurable editing remain the job of Tier 1.
+This is a product boundary as well as a maintenance boundary; features such as
+multi-cursor editing, folding, snippets, and rename should trigger a fresh
+off-the-shelf-editor evaluation rather than being implemented ad hoc here.
+
 The original draft proposed Monaco in a `QWebEngineView`. Research (2026-08,
 verified empirically against the official FreeCAD 1.0.2 bundle) killed that
 and every other off-the-shelf option:
@@ -228,8 +236,17 @@ numbers, Python syntax highlighting, auto-indent, completion popup fed
 asynchronously (worker thread → Qt signal, stale answers dropped), Ctrl+Enter
 run, Ctrl+S save. The dock panel (one per ScriptObject, opened by command or
 double-click) saves through the filesystem so the Tier-1 watcher machinery is
-reused unchanged, and maps kernel tracebacks to a highlighted error line via
-the proxy's `last_error`.
+reused unchanged.
+
+Execution failures cross the editor boundary as backend-neutral, versioned
+diagnostics (`editor/diagnostics.py`): file, source range, severity, message,
+traceback, source, and document version. The native widget renders these as
+gutter markers and wave underlines; hover shows the cause and traceback, and a
+click opens a selectable/copyable inspector. A future CodeMirror or Monaco
+frontend should consume this same model rather than teaching the dock about a
+second editor API. Results are only attached to the exact document revision
+that produced them, preventing stale watcher/autosave errors from marking new
+text.
 
 ## 7. Packaging and distribution
 

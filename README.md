@@ -8,8 +8,9 @@ own OCP/OCCT — no binary conflicts with FreeCAD), and the results land in your
 FreeCAD document as **real parametric objects**: they save in `.FCStd` files,
 recompute when parameters change, and feed TechDraw, FEM, CAM, and Assembly.
 
-Edit in whatever editor you already love — save the file and FreeCAD updates.
-The `show()` / `show_object()` API is compatible with
+Use the focused embedded editor for the tight edit → recompute → inspect loop,
+or edit in whatever full IDE you already love and let FreeCAD hot-reload each
+save. The `show()` / `show_object()` API is compatible with
 [ocp-vscode](https://github.com/bernhard-42/vscode-ocp-cad-viewer), so existing
 scripts port unchanged.
 
@@ -45,10 +46,12 @@ provisions the kernel's virtual environment automatically on first run (using
 
 1. **Code → New Script** creates a file-backed script and a `ScriptObject` in the
    active document.
-2. Open the file in your editor. Write build123d or CadQuery as usual; call
-   `show(part)` (optional — top-level shapes are auto-discovered).
+2. Open the ScriptObject in the embedded editor, or open its source file in an
+   external IDE. Write build123d or CadQuery as usual; call `show(part)`
+   (optional — top-level shapes are auto-discovered).
 3. Save. The model updates in FreeCAD. Parameters you declare appear in the
-   property panel.
+   property panel. Execution errors appear on their source line in the embedded
+   editor, with details available by hovering or clicking the gutter marker.
 
 ## Repository layout
 

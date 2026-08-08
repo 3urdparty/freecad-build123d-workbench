@@ -19,9 +19,43 @@ import FreeCADGui as Gui  # type: ignore[import-not-found]
 from PySide import QtCore, QtWidgets  # FreeCAD's PySide shim
 
 from .. import preferences
-from .code_editor import CodeEditor
+from . import create_editor
+from .diagnostics import diagnostics_from_traceback, format_diagnostics_text
 
 _open_docks: dict[tuple, ScriptEditorDock] = {}
+
+
+class _RecomputeObserver:
+    """Routes every ScriptObject recompute to its open dock, regardless of
+    what triggered it — file watcher, property panel edit, Rerun command,
+    another addon. Without this, only dock-initiated runs updated the
+    error highlight and status, and errors from watcher reloads landed
+    exclusively in the Report view."""
+
+    def slotRecomputedObject(self, obj):  # noqa: N802 (FreeCAD API)
+        try:
+            key = (obj.Document.Name, obj.Name)
+        except Exception:
+            return
+        dock = _open_docks.get(key)
+        if dock is None:
+            return
+        try:
+            dock._report_result(obj, focus_error=False)
+        except RuntimeError:  # dock's C++ side already deleted
+            _open_docks.pop(key, None)
+        except Exception:
+            pass  # status refresh must never break a recompute
+
+
+_observer: _RecomputeObserver | None = None
+
+
+def _ensure_observer() -> None:
+    global _observer
+    if _observer is None:
+        _observer = _RecomputeObserver()
+        App.addDocumentObserver(_observer)
 
 
 def open_editor(obj) -> ScriptEditorDock:
@@ -37,6 +71,7 @@ def open_editor(obj) -> ScriptEditorDock:
             return dock
         except RuntimeError:  # C++ object already deleted
             _open_docks.pop(key, None)
+    _ensure_observer()
     dock = ScriptEditorDock(obj)
     _open_docks[key] = dock
     dock.destroyed.connect(lambda *_, k=key: _open_docks.pop(k, None))
@@ -100,7 +135,7 @@ class ScriptEditorDock(QtWidgets.QDockWidget):
         self._override_bar.setVisible(False)
         layout.addWidget(self._override_bar)
 
-        self.editor = CodeEditor(body)
+        self.editor = create_editor(body)
         layout.addWidget(self.editor)
         self.setWidget(body)
 
@@ -193,18 +228,34 @@ class ScriptEditorDock(QtWidgets.QDockWidget):
 
     def _report_result(self, obj, focus_error: bool = False) -> None:
         stamp = time.strftime("%H:%M:%S")
-        error = getattr(obj.Proxy, "last_error", None)
-        if error:
-            loc = error[-1]
-            line = loc.get("line") if loc.get("file") == self._path else None
-            self.editor.set_error_line(line, focus=focus_error)
+        error = getattr(obj.Proxy, "last_error", None) or []
+        # A watcher-triggered run may refer to text changed by an external
+        # editor while this dock still shows an older buffer. Keep its message
+        # visible, but never attach its range to the wrong document revision.
+        version = (
+            self.editor.document_version()
+            if self._editor_matches_source_file()
+            else -1
+        )
+        diagnostics = diagnostics_from_traceback(error, self._path, version)
+        self.editor.set_diagnostics(diagnostics, focus=focus_error)
+        if diagnostics:
+            diagnostic = diagnostics[0]
             self._set_status(
                 f"error · {stamp} — showing last valid model — "
-                f"{loc.get('text', '')[:100]}", error=True)
+                f"{diagnostic.message[:100]}", error=True)
+            self._status.setToolTip(format_diagnostics_text(diagnostics))
         else:
-            self.editor.set_error_line(None)
+            self._status.setToolTip("")
             self._set_status(f"ok · {stamp}")
         self._update_override_banner(obj)
+
+    def _editor_matches_source_file(self) -> bool:
+        try:
+            with open(self._path, encoding="utf-8") as source_file:
+                return source_file.read() == self.editor.toPlainText()
+        except OSError:
+            return False
 
     def _update_override_banner(self, obj) -> None:
         from ..feature import overridden_params
