@@ -23,6 +23,7 @@ from .rpc import RpcClient, RpcError
 
 HANDSHAKE_PREFIX = "FC_CODE_KERNEL PORT="
 TOKEN_ENV = "FC_CODE_KERNEL_TOKEN"
+PROVISIONING_CONSENT_ENV = "FC_CODE_PROVISIONING_CONSENT"
 
 # Python version for the kernel's managed environment. The kernel only ever
 # talks JSON-RPC to FreeCAD, so this does NOT need to match FreeCAD's own
@@ -88,6 +89,7 @@ class KernelManager:
         self._client: RpcClient | None = None
         self._token: str = ""
         self._lock = threading.RLock()
+        self._provisioning_approved = False
 
     # -- environment ---------------------------------------------------------
 
@@ -105,6 +107,68 @@ class KernelManager:
     def _sentinel(self) -> str:
         return os.path.join(self.env_dir(), ".provisioned")
 
+    def is_env_provisioned(self) -> bool:
+        """Whether the managed environment completed provisioning."""
+        return os.path.exists(self._sentinel())
+
+    def request_provisioning_consent(self, *, force: bool = False) -> bool:
+        """Ask before a first-run download or an explicit environment rebuild."""
+        if not force and (self.is_env_provisioned() or self._provisioning_approved):
+            return True
+        # Headless automation has no GUI in which to answer the dialog. This
+        # opt-in must be set explicitly by the caller, including CI.
+        if os.environ.get(PROVISIONING_CONSENT_ENV) == "1":
+            self._provisioning_approved = True
+            return True
+        if not App.GuiUp:
+            _warn(
+                "kernel setup requires explicit consent in headless mode; "
+                f"set {PROVISIONING_CONSENT_ENV}=1"
+            )
+            return False
+
+        from PySide import QtWidgets  # FreeCAD's PySide shim
+
+        requirements = [r.strip() for r in preferences.package_pins().splitlines() if r.strip()]
+        box = QtWidgets.QMessageBox()
+        box.setIcon(QtWidgets.QMessageBox.Information)
+        if force:
+            box.setWindowTitle("Rebuild Code Workbench environment")
+            box.setText("Rebuild the isolated Python environment for Code Workbench?")
+            box.setInformativeText(
+                f"The existing Code Workbench environment at:\n{self.env_dir()}\n\n"
+                "will be deleted and recreated. Installed packages and local changes "
+                "inside that environment will be lost.\n\n"
+                f"Python {KERNEL_PYTHON} may be downloaded. The workbench will install "
+                f"its pinned build123d/CadQuery packages:\n{', '.join(requirements)}\n"
+                "along with their OCP and Jedi dependencies. This requires network "
+                "access and disk space."
+            )
+            accept_label = "Rebuild environment"
+            cancel_label = "Cancel"
+        else:
+            box.setWindowTitle("Set up Code Workbench environment")
+            box.setText("Set up the isolated Python environment for Code Workbench?")
+            box.setInformativeText(
+                f"The environment will be created at:\n{self.env_dir()}\n\n"
+                f"Python {KERNEL_PYTHON} may be downloaded. The workbench will install "
+                f"its pinned build123d/CadQuery packages:\n{', '.join(requirements)}\n"
+                "along with their OCP and Jedi dependencies.\n\n"
+                "This requires network access and disk space. No download starts unless "
+                "you choose Set up environment."
+            )
+            accept_label = "Set up environment"
+            cancel_label = "Not now"
+        setup = box.addButton(accept_label, QtWidgets.QMessageBox.AcceptRole)
+        box.addButton(cancel_label, QtWidgets.QMessageBox.RejectRole)
+        box.exec_()
+        accepted = box.clickedButton() is setup
+        if accepted:
+            self._provisioning_approved = True
+        else:
+            _log("kernel environment setup postponed.")
+        return accepted
+
     def ensure_env(self) -> None:
         """Create the venv and install kernel + CAD packages if missing.
 
@@ -112,8 +176,10 @@ class KernelManager:
         exists — a run that failed halfway (network error, build failure)
         leaves no sentinel and is wiped and redone on the next attempt.
         """
-        if os.path.exists(self._sentinel()):
+        if self.is_env_provisioned():
             return
+        if not self.request_provisioning_consent():
+            raise RuntimeError("kernel environment setup was postponed")
         env_dir = self.env_dir()
         if os.path.isdir(env_dir):
             _log("removing incomplete kernel environment…")
@@ -209,6 +275,10 @@ class KernelManager:
     # -- process lifecycle ---------------------------------------------------
 
     def ensure_started(self, background: bool = False) -> None:
+        # Do this on the calling (normally GUI) thread. Qt dialogs cannot be
+        # safely created by the background provisioning thread.
+        if not self.is_env_provisioned() and not self.request_provisioning_consent():
+            return
         if background:
             def _bg() -> None:
                 try:
@@ -268,10 +338,12 @@ class KernelManager:
             self.stop()
             self._ensure_started_sync()
 
-    def rebuild_env(self) -> None:
+    def rebuild_env(self) -> bool:
         """Stop the kernel, delete the managed environment, re-provision
         from scratch (background — progress in the Report view). This is
         how users pick up new kernel dependencies after an addon update."""
+        if not self.request_provisioning_consent(force=True):
+            return False
         with self._lock:
             self.stop()
             env_dir = self.env_dir()
@@ -279,6 +351,7 @@ class KernelManager:
                 _log(f"removing kernel environment at {env_dir}…")
                 shutil.rmtree(env_dir)
         self.ensure_started(background=True)
+        return True
 
     def stop(self) -> None:
         with self._lock:

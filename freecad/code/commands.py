@@ -173,18 +173,10 @@ class RebuildEnvCommand(_BaseCommand):
     icon = "code_rebuild_env.svg"
 
     def Activated(self):
-        from PySide import QtWidgets
-
         from .kernel_manager import KernelManager
 
         mgr = KernelManager.instance()
-        answer = QtWidgets.QMessageBox.question(
-            None, "Rebuild kernel environment",
-            f"Delete and re-download the kernel environment at:\n"
-            f"{mgr.env_dir()}\n\nThis takes a few minutes. Continue?",
-        )
-        if answer == QtWidgets.QMessageBox.Yes:
-            mgr.rebuild_env()
+        if mgr.rebuild_env():
             App.Console.PrintMessage(
                 "[Code] rebuilding kernel environment — watch this Report "
                 "view for progress\n")

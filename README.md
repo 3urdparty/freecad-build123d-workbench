@@ -87,9 +87,9 @@ Common `Mod` locations are:
 | Windows | `%APPDATA%\FreeCAD\Mod` |
 
 Restart FreeCAD and select the **Code** workbench. On first activation, Code Workbench
-creates its isolated kernel environment and installs its pinned CAD packages. This can
-take a few minutes; progress appears in **View → Panels → Report view**. Later starts
-reuse the environment.
+explains what it will download and where the isolated environment will be created.
+Provisioning begins only after you approve it. This can take a few minutes; progress
+appears in **View → Panels → Report view**. Later starts reuse the environment.
 
 ## Your first model
 

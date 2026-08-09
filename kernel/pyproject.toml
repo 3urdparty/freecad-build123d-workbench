@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "fc-code-kernel"
-version = "0.1.0"
+version = "0.2.0"
 description = "Execution kernel for the FreeCAD Code Workbench: runs build123d/CadQuery scripts and serializes results as BREP."
 requires-python = ">=3.10"
 license = "LGPL-2.1-or-later"

@@ -44,6 +44,9 @@ jobs:
   # provisioned for real) -> BREP -> parametric object -> recompute paths.
   freecad-e2e:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        freecad-version: ["1.0", "1.1.3"]
     steps:
       - uses: actions/checkout@v7
       # The kernel's OCP wheels link libGL, which the headless runner images
@@ -57,9 +60,9 @@ jobs:
           environment-name: fc
           create-args: >-
             -c conda-forge
-            freecad=1.0
+            freecad=${{ matrix.freecad-version }}
             python=3.11
-      - run: micromamba run -n fc bash tests/freecad/run_e2e.sh
+      - run: micromamba run -n fc env FC_CODE_PROVISIONING_CONSENT=1 bash tests/freecad/run_e2e.sh
         timeout-minutes: 20
       # An abnormal exit is most likely resource pressure: the kernel env
       # pulls both cadquery-ocp variants plus vtk. Say so out loud instead of
