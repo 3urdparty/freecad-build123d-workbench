@@ -335,6 +335,78 @@ class KernelManager:
         else:
             self._ensure_started_sync()
 
+    def _start_background_with_progress(self) -> bool:
+        """Provision off the GUI thread while keeping first-run state visible."""
+        try:
+            import FreeCADGui as Gui  # type: ignore[import-not-found]
+            from PySide import QtCore, QtWidgets  # FreeCAD's PySide shim
+        except (ImportError, AttributeError):
+            return False
+
+        class SetupBridge(QtCore.QObject):
+            finished = QtCore.Signal(bool, str)
+
+            def __init__(self, parent=None):
+                super().__init__(parent)
+                self.callback = None
+
+            @QtCore.Slot(bool, str)
+            def deliver(self, ok: bool, detail: str) -> None:
+                if self.callback is not None:
+                    self.callback(ok, detail)
+
+        parent = Gui.getMainWindow()
+        progress = QtWidgets.QProgressDialog(
+            "Setting up Code Workbench's isolated Python environment…\n\n"
+            "This can take several minutes. Detailed progress is available in "
+            "View → Panels → Report view.",
+            "",
+            0,
+            0,
+            parent,
+        )
+        progress.setWindowTitle("Setting up Code Workbench")
+        progress.setCancelButton(None)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.show()
+        bridge = SetupBridge(parent)
+        self._background_ui.extend((progress, bridge))
+        _log("setup started — detailed progress is in View → Panels → Report view.")
+
+        def finished(ok: bool, detail: str) -> None:
+            progress.close()
+            for item in (progress, bridge):
+                if item in self._background_ui:
+                    self._background_ui.remove(item)
+            if ok:
+                parent.statusBar().showMessage("Code Workbench kernel environment is ready", 8000)
+                return
+            concise = detail if len(detail) <= 2000 else "…\n" + detail[-2000:]
+            QtWidgets.QMessageBox.critical(
+                parent,
+                "Code Workbench setup failed",
+                "The isolated Python environment could not be set up.\n\n"
+                f"{concise}\n\n"
+                "Detailed diagnostics are in View → Panels → Report view. "
+                "After resolving the issue, choose Code → Rebuild kernel environment.",
+            )
+
+        bridge.callback = finished
+        bridge.finished.connect(bridge.deliver)
+
+        def work() -> None:
+            try:
+                self._ensure_started_sync()
+            except Exception as exc:
+                bridge.finished.emit(False, str(exc))
+            else:
+                bridge.finished.emit(True, "")
+
+        threading.Thread(target=work, daemon=True).start()
+        return True
+
     def _ensure_started_sync(self) -> None:
         with self._lock:
             if self._client is not None and self._client.connected:
