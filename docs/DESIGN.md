@@ -317,10 +317,13 @@ requires a per-session random token passed to the kernel at spawn (env var), so
 another local user cannot drive the kernel. Scripts are file-backed; Code Workbench
 does not embed or silently execute source stored inside an `.FCStd` document.
 
-First activation currently provisions a separate Python runtime and downloads pinned
-packages from their normal package sources. That behavior must remain disclosed, use
-TLS-backed package tooling, and gain an explicit first-run confirmation before broad
-distribution through the Addon Index.
+Before provisioning a separate Python runtime and downloading pinned packages on first
+activation, Code Workbench shows explicit consent. The dialog identifies the
+managed-environment path, possible Python download, package set, network access, and
+disk-space requirement; declining performs no download. Rebuilds separately disclose
+that the existing environment and its local changes will be deleted. Package tooling
+must continue to use TLS-backed sources before broad distribution through the Addon
+Index.
 
 ## 11. Open questions — resolved status
 
