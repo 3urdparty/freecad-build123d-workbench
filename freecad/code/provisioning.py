@@ -116,7 +116,10 @@ def find_compatible_python(
         if not candidate or not _is_executable(candidate):
             continue
         real = os.path.realpath(candidate)
-        if sys.platform == "darwin" and real == "/usr/bin/python3":
+        if sys.platform == "darwin" and "/usr/bin/python3" in (
+            os.path.abspath(candidate),
+            real,
+        ):
             continue
         if real in seen or real in excluded_real:
             continue
