@@ -21,7 +21,7 @@ import urllib.request
 import zipfile
 from collections.abc import Iterable
 
-MIN_PYTHON = (3, 10)
+MIN_PYTHON = (3, 11)
 VERSION_PROBE = "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
 
 # A small, pinned uv binary gives Code Workbench a standalone Python without
@@ -97,16 +97,14 @@ def find_compatible_python(
     if candidates is None:
         discovered = [
             shutil.which(name)
-            for name in ("python3.12", "python3.11", "python3.10", "python3", "python")
+            for name in ("python3.12", "python3.11", "python3", "python")
         ]
         candidates = [
             *discovered,
             "/opt/homebrew/bin/python3.12",
             "/opt/homebrew/bin/python3.11",
-            "/opt/homebrew/bin/python3.10",
             "/usr/local/bin/python3.12",
             "/usr/local/bin/python3.11",
-            "/usr/local/bin/python3.10",
             "/usr/bin/python3",
         ]
 

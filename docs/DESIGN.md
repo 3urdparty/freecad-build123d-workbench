@@ -339,6 +339,8 @@ distribution through the Addon Index.
 1. **Pin strategy — RESOLVED: hard pins + button.** `package_pins()` defaults
    to pinned `build123d`/`cadquery` versions (kept in sync with CI); users
    edit the pins in the preferences page and run "Rebuild kernel environment".
+   Provisioning accepts wheels only, and adds a known wheel-backed
+   Numba/llvmlite pair on Intel macOS where newer releases lack x86_64 wheels.
 2. **show_object color/alpha — RESOLVED: applied.** Single object → ViewObject
    ShapeColor/Transparency; compound → per-face DiffuseColor per child shape;
    shown name → object Label unless the user has renamed it (user wins).
