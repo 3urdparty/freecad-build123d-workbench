@@ -60,36 +60,67 @@ spreadsheet links, and can feed TechDraw, FEM, CAM, and Assembly workflows.
 ### Requirements
 
 - FreeCAD 1.0 or later
-- Git
 - An internet connection on first activation
-- [`uv`](https://docs.astral.sh/uv/) (recommended), or a system Python 3.10 or later
+- On Linux, [`uv`](https://docs.astral.sh/uv/) (recommended), or a system Python
+  3.10 or later. On Windows and macOS, Code Workbench downloads its own private
+  `uv` when it is not already installed—no separate Python or developer tools are
+  required.
 
-First find FreeCAD's user-data directory. In **View → Panels → Python console**, run:
+### 1. Find or create the `Mod` folder
+
+For FreeCAD 1.1, first check these common locations:
+
+| Platform | Directory |
+|---|---|
+| Linux | `~/.local/share/FreeCAD/v1-1/Mod` |
+| macOS | `~/Library/Application Support/FreeCAD/v1-1/Mod` |
+| Windows | `%APPDATA%\FreeCAD\v1-1\Mod` |
+
+The location can vary with the FreeCAD version and how it was installed. If the
+corresponding path is not present, open **View → Panels → Python console** in FreeCAD
+and run:
 
 ```python
 App.getUserAppDataDir()
 ```
 
-Quit FreeCAD, create a `Mod` directory inside that location if needed, then clone this
-repository into it:
+We want to use the returned path with `Mod` appended to it. If a `Mod` folder doesn't already exist here, create it.
+
+### 2. Put Code Workbench in the `Mod` folder
+
+Quit FreeCAD before installing, then choose the method that suits you.
+
+#### From a ZIP—recommended for non-developers
+
+Open the [latest GitHub release](https://github.com/jokroese/freecad-code-workbench/releases/latest)
+and download **Source code (zip)**. Extract it, then move the entire
+`freecad-code-workbench-X.Y.Z` folder into `Mod`—do not move only the folder's
+contents. The resulting layout should include:
+
+```text
+/path/to/FreeCAD/Mod/freecad-code-workbench-X.Y.Z/package.xml
+```
+
+#### With Git—for developers
+
+In a terminal, go to the `Mod` folder and clone the repository:
 
 ```console
-cd /path/from/freecad/Mod
+cd /path/to/FreeCAD/Mod
 git clone https://github.com/jokroese/freecad-code-workbench.git
 ```
 
-Common `Mod` locations are:
+### 3. Restart FreeCAD and select Code Workbench
 
-| Platform | Directory |
-|---|---|
-| Linux | `~/.local/share/FreeCAD/Mod` |
-| macOS | `~/Library/Application Support/FreeCAD/Mod` |
-| Windows | `%APPDATA%\FreeCAD\Mod` |
+Restart FreeCAD, then choose **Code** from the workbench selector.
 
-Restart FreeCAD and select the **Code** workbench. On first activation, Code Workbench
-explains what it will download and where the isolated environment will be created.
-Provisioning begins only after you approve it. This can take a few minutes; progress
-appears in **View → Panels → Report view**. Later starts reuse the environment.
+### 4. Approve the first-time environment setup
+
+On first activation, Code Workbench explains what it will download and where the
+isolated environment will be created. Provisioning begins only after you approve it.
+This can take a few minutes; a setup window remains visible, with detailed progress in
+**View → Panels → Report view**. If setup fails, an error dialog shows the cause and
+the recovery command. Later starts reuse the environment.
 
 ## Your first model
 
@@ -209,10 +240,10 @@ Addon-Manager-distributed workbench.
 | FreeCAD | 1.0 or later |
 | build123d | 0.11.1 by default; configurable in Preferences |
 | CadQuery | 2.8.0 by default; configurable in Preferences |
-| Kernel Python | Managed Python 3.12 with `uv`; system Python 3.10+ fallback |
+| Kernel Python | Managed Python 3.12 with `uv`; system Python 3.10+ fallback; private `uv` bootstrap on Windows and macOS |
 | Linux | Full automated tests, including headless FreeCAD end to end |
 | macOS | Supported and exercised during development |
-| Windows | Platform paths are implemented; automated CI coverage is still to come |
+| Windows | Private `uv` bootstrap and platform paths covered by Windows CI |
 
 ### Known limitations
 

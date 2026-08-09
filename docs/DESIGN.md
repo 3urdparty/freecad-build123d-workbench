@@ -102,10 +102,13 @@ crosses the boundary is BREP bytes plus a JSON metadata sidecar.
   (`App.getUserAppDataDir()/CodeWorkbench/env`).
 - Provisions with `uv` when available (fast, reproducible), including explicit
   Homebrew/user-local discovery for GUI launches whose `PATH` is minimal.
+  On macOS it ignores Apple's developer-tool Python launcher. On Windows and
+  macOS, when needed, it downloads a pinned, checksum-verified private `uv`.
   Falls back only to a compatible system Python (3.10+), never FreeCAD's
-  embedded interpreter. Installs the `fc-code-kernel` package plus `build123d`
-  / `cadquery` at pinned-compatible versions, and reports captured installer
-  stderr when provisioning fails.
+  embedded interpreter.
+  Installs the `fc-code-kernel` package plus `build123d` / `cadquery` at
+  pinned-compatible versions, and reports captured installer stderr when
+  provisioning fails.
 - Spawns the kernel subprocess (`python -m fc_code_kernel --port 0`), reads the
   bound port from its stdout handshake, maintains the RPC connection.
 - Makes one automatic restart-and-retry attempt after a lost kernel connection;
@@ -264,9 +267,10 @@ text.
 ## 7. Packaging and distribution
 
 - Standard modern addon layout: `package.xml` metadata and a `freecad.code`
-  namespace package. Direct Git installation is supported today; official discovery
-  will use the `FreeCAD/Addons` Index for FreeCAD 1.0+ after public-alpha testing and
-  review.
+  namespace package. Before Addon Manager listing, users can install either GitHub's
+  automatically generated release source archive or a direct Git checkout. Official
+  discovery will use the `FreeCAD/Addons` Index for FreeCAD 1.0+ after public-alpha
+  testing and review.
 - The kernel ships as a separate installable (`kernel/`, package name
   `fc-code-kernel`) that the KernelManager installs *into the managed venv* from
   the addon's own checkout (`uv pip install -e <addon>/kernel`), so workbench and
@@ -319,11 +323,16 @@ does not embed or silently execute source stored inside an `.FCStd` document.
 
 Before provisioning a separate Python runtime and downloading pinned packages on first
 activation, Code Workbench shows explicit consent. The dialog identifies the
-managed-environment path, possible Python download, package set, network access, and
-disk-space requirement; declining performs no download. Rebuilds separately disclose
-that the existing environment and its local changes will be deleted. Package tooling
-must continue to use TLS-backed sources before broad distribution through the Addon
-Index.
+managed-environment path, possible uv/Python download, package set, network access,
+and disk-space requirement; declining performs no download. On macOS, provisioning
+never probes Apple's `/usr/bin/python3` developer-tool launcher. On Windows and
+macOS, if uv is not already installed, it downloads a pinned release into Code
+Workbench's private data directory and verifies its SHA-256 checksum before
+execution. A genuinely standalone system Python remains a fallback if that bootstrap
+fails; FreeCAD's embedded Python is never used to seed the kernel. Rebuilds
+separately disclose that the existing environment and its local changes will be
+deleted. Package tooling must continue to use TLS-backed sources before broad
+distribution through the Addon Index.
 
 ## 11. Open questions — resolved status
 

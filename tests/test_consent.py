@@ -128,6 +128,7 @@ def test_declining_rebuild_preserves_environment_and_discloses_deletion(
 ):
     module, app, _warnings = kernel_module
     app.GuiUp = True
+    monkeypatch.setattr(module.sys, "platform", "darwin")
     message_box = _declining_message_box()
     monkeypatch.setitem(sys.modules, "PySide", SimpleNamespace(QtWidgets=SimpleNamespace(
         QMessageBox=message_box)))
@@ -140,10 +141,67 @@ def test_declining_rebuild_preserves_environment_and_discloses_deletion(
     assert deleted == []
     assert "will be deleted and recreated" in message_box.instances[0].informative_text
     assert "local changes" in message_box.instances[0].informative_text
+    assert f"private uv {module.UV_VERSION}" in message_box.instances[0].informative_text
+    assert manager._managed_uv_dir() in message_box.instances[0].informative_text
     assert [label for label, _button in message_box.instances[0].buttons] == [
         "Rebuild environment",
         "Cancel",
     ]
+
+
+def test_windows_setup_discloses_private_uv_download(kernel_module, monkeypatch):
+    module, app, _warnings = kernel_module
+    app.GuiUp = True
+    monkeypatch.setattr(module.sys, "platform", "win32")
+    message_box = _declining_message_box()
+    monkeypatch.setitem(
+        sys.modules,
+        "PySide",
+        SimpleNamespace(QtWidgets=SimpleNamespace(QMessageBox=message_box)),
+    )
+    manager = module.KernelManager()
+
+    assert manager.request_provisioning_consent() is False
+    assert f"private uv {module.UV_VERSION}" in message_box.instances[0].informative_text
+    assert manager._managed_uv_dir() in message_box.instances[0].informative_text
+
+
+def test_windows_setup_prefers_private_uv_over_system_python(kernel_module, monkeypatch):
+    module, _app, _warnings = kernel_module
+    monkeypatch.setattr(module.sys, "platform", "win32")
+    monkeypatch.setattr(module, "find_uv", lambda: None)
+    monkeypatch.setattr(
+        module,
+        "find_compatible_python",
+        lambda **_kwargs: pytest.fail("system Python should only be a fallback"),
+    )
+    bootstrapped = []
+    monkeypatch.setattr(
+        module,
+        "bootstrap_uv",
+        lambda path: bootstrapped.append(path) or str(os.path.join(path, "uv.exe")),
+    )
+    commands = []
+    manager = module.KernelManager()
+    manager._provisioning_approved = True
+
+    def run(cmd, **_kwargs):
+        commands.append(cmd)
+        os.makedirs(manager.env_dir(), exist_ok=True)
+
+    monkeypatch.setattr(module, "run_checked", run)
+    monkeypatch.setattr(manager, "_prefer_vtk_ocp", lambda *_args: None)
+
+    manager.ensure_env()
+
+    assert bootstrapped == [manager._managed_uv_dir()]
+    assert commands[0][:4] == [
+        os.path.join(manager._managed_uv_dir(), "uv.exe"),
+        "venv",
+        "--python",
+        module.KERNEL_PYTHON,
+    ]
+    assert manager.is_env_provisioned()
 
 
 def test_autostart_disabled_does_not_start_kernel(kernel_module, monkeypatch):

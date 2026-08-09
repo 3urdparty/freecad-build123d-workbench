@@ -18,7 +18,15 @@ import threading
 import FreeCAD as App  # type: ignore[import-not-found]
 
 from . import preferences, rpc
-from .provisioning import MIN_PYTHON, find_compatible_python, find_uv, run_checked
+from .provisioning import (
+    MIN_PYTHON,
+    UV_VERSION,
+    bootstrap_uv,
+    bootstrapped_uv_path,
+    find_compatible_python,
+    find_uv,
+    run_checked,
+)
 from .rpc import RpcClient, RpcError
 
 HANDSHAKE_PREFIX = "FC_CODE_KERNEL PORT="
@@ -90,6 +98,7 @@ class KernelManager:
         self._token: str = ""
         self._lock = threading.RLock()
         self._provisioning_approved = False
+        self._background_ui: list[object] = []
 
     # -- environment ---------------------------------------------------------
 
@@ -106,6 +115,11 @@ class KernelManager:
 
     def _sentinel(self) -> str:
         return os.path.join(self.env_dir(), ".provisioned")
+
+    def _managed_uv_dir(self) -> str:
+        return os.path.join(
+            App.getUserAppDataDir(), "CodeWorkbench", "tools", f"uv-{UV_VERSION}"
+        )
 
     def is_env_provisioned(self) -> bool:
         """Whether the managed environment completed provisioning."""
@@ -130,6 +144,12 @@ class KernelManager:
         from PySide import QtWidgets  # FreeCAD's PySide shim
 
         requirements = [r.strip() for r in preferences.package_pins().splitlines() if r.strip()]
+        uv_disclosure = ""
+        if sys.platform in ("darwin", "win32"):
+            uv_disclosure = (
+                f"A private uv {UV_VERSION} may be downloaded to:\n"
+                f"{self._managed_uv_dir()}\n\n"
+            )
         box = QtWidgets.QMessageBox()
         box.setIcon(QtWidgets.QMessageBox.Information)
         if force:
@@ -139,7 +159,8 @@ class KernelManager:
                 f"The existing Code Workbench environment at:\n{self.env_dir()}\n\n"
                 "will be deleted and recreated. Installed packages and local changes "
                 "inside that environment will be lost.\n\n"
-                f"Python {KERNEL_PYTHON} may be downloaded. The workbench will install "
+                f"{uv_disclosure}Python {KERNEL_PYTHON} may also be downloaded. "
+                "The workbench will install "
                 f"its pinned build123d/CadQuery packages:\n{', '.join(requirements)}\n"
                 "along with their OCP and Jedi dependencies. This requires network "
                 "access and disk space."
@@ -151,7 +172,8 @@ class KernelManager:
             box.setText("Set up the isolated Python environment for Code Workbench?")
             box.setInformativeText(
                 f"The environment will be created at:\n{self.env_dir()}\n\n"
-                f"Python {KERNEL_PYTHON} may be downloaded. The workbench will install "
+                f"{uv_disclosure}Python {KERNEL_PYTHON} may also be downloaded. "
+                "The workbench will install "
                 f"its pinned build123d/CadQuery packages:\n{', '.join(requirements)}\n"
                 "along with their OCP and Jedi dependencies.\n\n"
                 "This requires network access and disk space. No download starts unless "
@@ -188,6 +210,28 @@ class KernelManager:
         clean = _clean_env()
         python = self._env_python()
         uv = find_uv()
+        host_py = None
+        if uv is None and sys.platform in ("darwin", "win32"):
+            managed_uv_dir = self._managed_uv_dir()
+            managed_uv = bootstrapped_uv_path(managed_uv_dir)
+            if os.path.isfile(managed_uv) and os.access(managed_uv, os.X_OK):
+                _log(f"using Code Workbench's managed uv {UV_VERSION}…")
+            else:
+                _log(f"downloading verified uv {UV_VERSION} for Code Workbench…")
+            try:
+                uv = bootstrap_uv(managed_uv_dir)
+            except RuntimeError as exc:
+                _warn(
+                    f"private uv setup failed ({exc}); checking for a compatible "
+                    "standalone system Python…"
+                )
+                host_py = find_compatible_python(
+                    env=clean, excluded=(sys.executable,)
+                )
+                if host_py is None:
+                    raise
+        elif uv is None:
+            host_py = find_compatible_python(env=clean, excluded=(sys.executable,))
         _log(f"provisioning kernel environment at {env_dir} (first run)…")
         if uv:
             # only-managed: never seed the venv from FreeCAD's/conda's own
@@ -203,7 +247,6 @@ class KernelManager:
         else:
             # Use *a* system python; FreeCAD's embedded interpreter may not
             # ship the venv module on all platforms.
-            host_py = find_compatible_python(env=clean, excluded=(sys.executable,))
             if host_py is None:
                 required = ".".join(str(part) for part in MIN_PYTHON)
                 raise RuntimeError(
@@ -277,9 +320,12 @@ class KernelManager:
     def ensure_started(self, background: bool = False) -> None:
         # Do this on the calling (normally GUI) thread. Qt dialogs cannot be
         # safely created by the background provisioning thread.
-        if not self.is_env_provisioned() and not self.request_provisioning_consent():
+        needs_setup = not self.is_env_provisioned()
+        if needs_setup and not self.request_provisioning_consent():
             return
         if background:
+            if needs_setup and App.GuiUp and self._start_background_with_progress():
+                return
             def _bg() -> None:
                 try:
                     self._ensure_started_sync()
@@ -288,6 +334,78 @@ class KernelManager:
             threading.Thread(target=_bg, daemon=True).start()
         else:
             self._ensure_started_sync()
+
+    def _start_background_with_progress(self) -> bool:
+        """Provision off the GUI thread while keeping first-run state visible."""
+        try:
+            import FreeCADGui as Gui  # type: ignore[import-not-found]
+            from PySide import QtCore, QtWidgets  # FreeCAD's PySide shim
+        except (ImportError, AttributeError):
+            return False
+
+        class SetupBridge(QtCore.QObject):
+            finished = QtCore.Signal(bool, str)
+
+            def __init__(self, parent=None):
+                super().__init__(parent)
+                self.callback = None
+
+            @QtCore.Slot(bool, str)
+            def deliver(self, ok: bool, detail: str) -> None:
+                if self.callback is not None:
+                    self.callback(ok, detail)
+
+        parent = Gui.getMainWindow()
+        progress = QtWidgets.QProgressDialog(
+            "Setting up Code Workbench's isolated Python environment…\n\n"
+            "This can take several minutes. Detailed progress is available in "
+            "View → Panels → Report view.",
+            "",
+            0,
+            0,
+            parent,
+        )
+        progress.setWindowTitle("Setting up Code Workbench")
+        progress.setCancelButton(None)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.show()
+        bridge = SetupBridge(parent)
+        self._background_ui.extend((progress, bridge))
+        _log("setup started — detailed progress is in View → Panels → Report view.")
+
+        def finished(ok: bool, detail: str) -> None:
+            progress.close()
+            for item in (progress, bridge):
+                if item in self._background_ui:
+                    self._background_ui.remove(item)
+            if ok:
+                parent.statusBar().showMessage("Code Workbench kernel environment is ready", 8000)
+                return
+            concise = detail if len(detail) <= 2000 else "…\n" + detail[-2000:]
+            QtWidgets.QMessageBox.critical(
+                parent,
+                "Code Workbench setup failed",
+                "The isolated Python environment could not be set up.\n\n"
+                f"{concise}\n\n"
+                "Detailed diagnostics are in View → Panels → Report view. "
+                "After resolving the issue, choose Code → Rebuild kernel environment.",
+            )
+
+        bridge.callback = finished
+        bridge.finished.connect(bridge.deliver)
+
+        def work() -> None:
+            try:
+                self._ensure_started_sync()
+            except Exception as exc:
+                bridge.finished.emit(False, str(exc))
+            else:
+                bridge.finished.emit(True, "")
+
+        threading.Thread(target=work, daemon=True).start()
+        return True
 
     def _ensure_started_sync(self) -> None:
         with self._lock:
