@@ -240,9 +240,9 @@ Addon-Manager-distributed workbench.
 | FreeCAD | 1.0 or later |
 | build123d | 0.11.1 by default; configurable in Preferences |
 | CadQuery | 2.8.0 by default; configurable in Preferences |
-| Kernel Python | Managed Python 3.12 with `uv`; system Python 3.10+ fallback; private `uv` bootstrap on Windows and macOS |
+| Kernel Python | Managed Python 3.12 with `uv`; system Python 3.11+ fallback; private `uv` bootstrap on Windows and macOS |
 | Linux | Full automated tests, including headless FreeCAD end to end |
-| macOS | Supported and exercised during development |
+| macOS | Wheel-only provisioning; Intel macOS package installation covered by CI |
 | Windows | Private `uv` bootstrap and platform paths covered by Windows CI |
 
 ### Known limitations

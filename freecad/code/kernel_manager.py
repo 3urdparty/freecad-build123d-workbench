@@ -9,6 +9,7 @@ goes through :meth:`KernelManager.run_script`.
 from __future__ import annotations
 
 import os
+import platform
 import secrets
 import shutil
 import subprocess
@@ -81,6 +82,17 @@ def _addon_root() -> str:
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
+def _kernel_requirements() -> list[str]:
+    """Return editable package pins plus platform requirements we must enforce."""
+    requirements = [r.strip() for r in preferences.package_pins().splitlines() if r.strip()]
+    if sys.platform == "darwin" and platform.machine().lower() in ("x86_64", "amd64"):
+        # Newer Numba/llvmlite releases have no macOS Intel wheels. Building
+        # llvmlite needs a matching LLVM toolchain, which first-run installs
+        # deliberately do not require.
+        requirements.extend(("numba==0.62.1", "llvmlite==0.45.1"))
+    return requirements
+
+
 class KernelManager:
     """Singleton owner of the kernel subprocess and its RPC connection."""
 
@@ -143,7 +155,7 @@ class KernelManager:
 
         from PySide import QtWidgets  # FreeCAD's PySide shim
 
-        requirements = [r.strip() for r in preferences.package_pins().splitlines() if r.strip()]
+        requirements = _kernel_requirements()
         uv_disclosure = ""
         if sys.platform in ("darwin", "win32"):
             uv_disclosure = (
@@ -261,11 +273,11 @@ class KernelManager:
                 label="creating the kernel environment",
             )
             pip_prefix = [python, "-m", "pip", "install"]
-        requirements = [r.strip() for r in preferences.package_pins().splitlines() if r.strip()]
+        requirements = _kernel_requirements()
         kernel_src = os.path.join(_addon_root(), "kernel")
         _log("installing kernel packages: " + ", ".join(requirements) + "…")
         run_checked(
-            [*pip_prefix, "-e", kernel_src, *requirements],
+            [*pip_prefix, "--only-binary", ":all:", "-e", kernel_src, *requirements],
             env=clean,
             label="installing kernel packages",
         )

@@ -45,6 +45,21 @@ jobs:
           tests/test_consent.py::test_windows_setup_prefers_private_uv_over_system_python
           -v
 
+  # CadQuery currently needs older Numba/llvmlite releases on Intel macOS:
+  # newer releases publish no x86_64 macOS wheels. Exercise the exact
+  # wheel-only provisioning graph so it cannot regress into a source build.
+  macos-intel-kernel-install:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9.0.0
+      - run: uv venv --python 3.12 .venv
+      - run: >-
+          uv pip install --python .venv/bin/python --only-binary :all: -e ./kernel
+          build123d==0.11.1 cadquery==2.8.0 numba==0.62.1 llvmlite==0.45.1
+      - run: .venv/bin/python -c "import build123d, cadquery, llvmlite, numba"
+      - run: uv pip check --python .venv/bin/python
+
   # Kernel tests against the real CAD stack (OCP + build123d + cadquery).
   kernel-tests:
     runs-on: ubuntu-latest

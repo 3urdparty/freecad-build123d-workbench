@@ -201,7 +201,21 @@ def test_windows_setup_prefers_private_uv_over_system_python(kernel_module, monk
         "--python",
         module.KERNEL_PYTHON,
     ]
+    assert commands[1][5:7] == ["--only-binary", ":all:"]
     assert manager.is_env_provisioned()
+
+
+def test_macos_intel_uses_wheel_backed_numba_requirements(kernel_module, monkeypatch):
+    module, _app, _warnings = kernel_module
+    monkeypatch.setattr(module.sys, "platform", "darwin")
+    monkeypatch.setattr(module.platform, "machine", lambda: "x86_64")
+
+    assert module._kernel_requirements() == [
+        "build123d==1",
+        "cadquery==2",
+        "numba==0.62.1",
+        "llvmlite==0.45.1",
+    ]
 
 
 def test_autostart_disabled_does_not_start_kernel(kernel_module, monkeypatch):

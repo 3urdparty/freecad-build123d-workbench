@@ -35,6 +35,13 @@ def test_find_compatible_python_rejects_old_version(tmp_path):
     assert provisioning.find_compatible_python(candidates=[old, current]) == current
 
 
+def test_find_compatible_python_rejects_python_310(tmp_path):
+    old = _fake_executable(tmp_path / "python-old", "3.10")
+    current = _fake_executable(tmp_path / "python-current", "3.11")
+
+    assert provisioning.find_compatible_python(candidates=[old, current]) == current
+
+
 def test_find_compatible_python_honors_exclusion(tmp_path):
     compatible = _fake_executable(tmp_path / "python", "3.12")
 
