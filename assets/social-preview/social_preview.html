@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1280, initial-scale=1">
+  <style>
+    :root {
+      --background: #101720;
+      --panel: #20272e;
+      --panel-dark: #171d23;
+      --panel-mid: #1d242b;
+      --viewport: #303941;
+      --accent: #35a85a;
+      --accent-light: #61c77e;
+      --text: #f1f5f7;
+      --text-mid: #a5b1ba;
+      --text-dim: #798995;
+      --line: rgba(185, 204, 218, 0.14);
+      --sans: "IBM Plex Sans", Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+      --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 1280px;
+      height: 640px;
+      margin: 0;
+      overflow: hidden;
+      background: var(--background);
+    }
+
+    #social-preview {
+      position: relative;
+      width: 1280px;
+      height: 640px;
+      overflow: hidden;
+      color: var(--text);
+      font-family: var(--sans);
+      background:
+        radial-gradient(920px 610px at 74% 42%, rgba(53, 168, 90, 0.15), transparent 69%),
+        linear-gradient(160deg, rgba(255, 255, 255, 0.035), transparent 42%),
+        var(--background);
+    }
+
+    .message {
+      position: absolute;
+      left: 64px;
+      top: 0;
+      bottom: 0;
+      width: 474px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 28px;
+    }
+
+    .mark, .mark svg { width: 64px; height: 64px; display: block; }
+
+    .overline {
+      margin: 0 0 23px;
+      color: #8797a4;
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 0.2em;
+      white-space: nowrap;
+    }
+
+    h1 {
+      margin: 0;
+      color: var(--text);
+      font-size: 46px;
+      font-weight: 650;
+      letter-spacing: -0.028em;
+      line-height: 1.14;
+    }
+
+    h1 em { color: var(--accent-light); font-style: normal; }
+
+    .workbench {
+      position: absolute;
+      left: 552px;
+      right: -56px;
+      top: 56px;
+      bottom: 56px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-right: 0;
+      border-radius: 14px 0 0 14px;
+      background: var(--panel);
+      box-shadow: 0 40px 90px rgba(0, 0, 0, 0.45);
+    }
+
+    .titlebar {
+      height: 38px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--line);
+      background: #192028;
+      color: var(--text-dim);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .tab {
+      padding: 4px 10px;
+      border-radius: 4px;
+      background: var(--accent);
+      color: #07150c;
+      font-weight: 700;
+    }
+
+    .workspace { display: flex; height: calc(100% - 38px); }
+
+    .tree {
+      width: 205px;
+      flex: none;
+      padding: 17px 14px;
+      border-right: 1px solid var(--line);
+      background: var(--panel-mid);
+      color: var(--text-mid);
+      font-size: 12.5px;
+    }
+
+    .section-label {
+      margin: 0 0 12px;
+      color: var(--text-dim);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.16em;
+    }
+
+    .tree-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 24px;
+      white-space: nowrap;
+    }
+
+    .tree-row.child { padding-left: 16px; color: var(--text); }
+
+    .node {
+      width: 9px;
+      height: 9px;
+      flex: none;
+      border-radius: 2px;
+      background: #8796a0;
+    }
+
+    .child .node { background: var(--accent); }
+    .parameters { margin-top: 18px; }
+
+    .parameter-grid {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px 8px;
+      font-family: var(--mono);
+      font-size: 11.5px;
+    }
+
+    .parameter-grid output { color: var(--text); }
+    .parameter-grid output.selected { color: var(--accent-light); }
+
+    .viewport {
+      position: relative;
+      width: 323px;
+      flex: none;
+      overflow: hidden;
+      background:
+        linear-gradient(160deg, rgba(255, 255, 255, 0.05), transparent 46%),
+        linear-gradient(160deg, #333c44, #252c33 67%);
+    }
+
+    .viewport::after {
+      content: "";
+      position: absolute;
+      left: 28px;
+      right: 24px;
+      bottom: 96px;
+      height: 38px;
+      border-radius: 50%;
+      background: rgba(4, 11, 16, 0.43);
+      filter: blur(16px);
+      transform: scaleY(0.48);
+    }
+
+    #model-canvas {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .code-pane {
+      position: relative;
+      flex: 1;
+      min-width: 255px;
+      overflow: hidden;
+      border-left: 1px solid var(--line);
+      background: var(--panel-dark);
+    }
+
+    .code-pane pre {
+      position: absolute;
+      inset: 0;
+      margin: 0;
+      padding: 16px;
+      color: #d6dee5;
+      font-family: var(--mono);
+      font-size: 10.5px;
+      line-height: 1.58;
+      white-space: pre;
+    }
+
+    .code-pane::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(90deg, transparent 38%, rgba(23, 29, 35, 0.9) 94%);
+    }
+
+    .kw { color: #c586c0; }
+    .str { color: #ce9178; }
+    .num { color: #b5cea8; }
+    .comment { color: #6a9955; }
+    .call { color: #61c8ff; }
+  </style>
+</head>
+<body>
+  <main id="social-preview">
+    <section class="message">
+      <div class="mark">{{LOGO_SVG}}</div>
+      <div>
+        <p class="overline">CODE WORKBENCH FOR FREECAD</p>
+        <h1>Model in <em>Python</em>.<br>Finish in <em>FreeCAD</em>.</h1>
+      </div>
+    </section>
+
+    <section class="workbench">
+      <header class="titlebar">
+        <span class="tab">Code</span>
+        <span>bearing_flange.py</span>
+      </header>
+      <div class="workspace">
+        <aside class="tree">
+          <p class="section-label">MODEL</p>
+          <div class="tree-row"><span class="node"></span>Unnamed</div>
+          <div class="tree-row child"><span class="node"></span>BearingFlange</div>
+
+          <div class="parameters">
+            <p class="section-label">PARAMETERS</p>
+            <div class="parameter-grid">
+              <span>bolt_spacing</span><output>{{BOLT_SPACING}}</output>
+              <span>bore_d</span><output class="selected">{{BORE_D}}</output>
+              <span>housing_d</span><output>{{HOUSING_D}}</output>
+              <span>thickness</span><output>{{THICKNESS}}</output>
+            </div>
+          </div>
+        </aside>
+
+        <div class="viewport"><canvas id="model-canvas"></canvas></div>
+        <div class="code-pane"><pre>{{CODE_HTML}}</pre></div>
+      </div>
+    </section>
+  </main>
+
+  <script id="mesh-data" type="application/json">{{MESH_JSON}}</script>
+  <script>
+    "use strict";
+
+    const mesh = JSON.parse(document.getElementById("mesh-data").textContent);
+    const canvas = document.getElementById("model-canvas");
+
+    function compile(gl, type, source) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        throw new Error(gl.getShaderInfoLog(shader));
+      }
+      return shader;
+    }
+
+    function renderModel() {
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(canvas.clientWidth * pixelRatio);
+      canvas.height = Math.round(canvas.clientHeight * pixelRatio);
+
+      const gl = canvas.getContext("webgl2", {
+        alpha: true,
+        antialias: true,
+        premultipliedAlpha: true
+      });
+      if (!gl) throw new Error("WebGL 2 is required to render the social preview");
+
+      const vertexShader = compile(gl, gl.VERTEX_SHADER, `#version 300 es
+        precision highp float;
+        in vec3 aPosition;
+        in vec3 aNormal;
+        uniform vec2 uCenter;
+        uniform vec2 uScale;
+        uniform float uDepthScale;
+        out vec3 vNormal;
+        out float vDepth;
+
+        void main() {
+          vec2 xy = (aPosition.xy - uCenter) * uScale;
+          gl_Position = vec4(xy, -aPosition.z * uDepthScale, 1.0);
+          vNormal = aNormal;
+          vDepth = aPosition.z;
+        }
+      `);
+
+      const fragmentShader = compile(gl, gl.FRAGMENT_SHADER, `#version 300 es
+        precision highp float;
+        in vec3 vNormal;
+        in float vDepth;
+        out vec4 outColor;
+
+        void main() {
+          vec3 normal = normalize(gl_FrontFacing ? vNormal : -vNormal);
+          vec3 key = normalize(vec3(-0.55, 0.8, 1.2));
+          vec3 fill = normalize(vec3(0.8, -0.35, 0.7));
+          vec3 rim = normalize(vec3(0.35, 0.7, -1.0));
+          float light = 0.34;
+          light += max(dot(normal, key), 0.0) * 0.64;
+          light += max(dot(normal, fill), 0.0) * 0.20;
+          light += pow(max(dot(normal, rim), 0.0), 2.0) * 0.16;
+          vec3 base = vec3(0.18, 0.43, 0.61);
+          vec3 colour = base * light + vec3(0.025, 0.07, 0.09);
+          outColor = vec4(colour, 1.0);
+        }
+      `);
+
+      const program = gl.createProgram();
+      gl.attachShader(program, vertexShader);
+      gl.attachShader(program, fragmentShader);
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        throw new Error(gl.getProgramInfoLog(program));
+      }
+      gl.useProgram(program);
+
+      function attribute(name, values) {
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(values), gl.STATIC_DRAW);
+        const location = gl.getAttribLocation(program, name);
+        gl.enableVertexAttribArray(location);
+        gl.vertexAttribPointer(location, 3, gl.FLOAT, false, 0, 0);
+      }
+
+      attribute("aPosition", mesh.positions);
+      attribute("aNormal", mesh.normals);
+
+      const indexBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(mesh.indices), gl.STATIC_DRAW);
+
+      const viewWidth = mesh.bounds.max_x - mesh.bounds.min_x;
+      const viewHeight = mesh.bounds.max_y - mesh.bounds.min_y;
+      const pixelsPerUnit = Math.min(
+        canvas.width * 0.90 / viewWidth,
+        canvas.height * 0.72 / viewHeight
+      );
+      gl.uniform2f(
+        gl.getUniformLocation(program, "uCenter"),
+        (mesh.bounds.min_x + mesh.bounds.max_x) / 2,
+        (mesh.bounds.min_y + mesh.bounds.max_y) / 2 + viewHeight * 0.015
+      );
+      gl.uniform2f(
+        gl.getUniformLocation(program, "uScale"),
+        2 * pixelsPerUnit / canvas.width,
+        2 * pixelsPerUnit / canvas.height
+      );
+      gl.uniform1f(gl.getUniformLocation(program, "uDepthScale"), 0.0025);
+
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      gl.enable(gl.DEPTH_TEST);
+      gl.depthFunc(gl.LEQUAL);
+      gl.drawElements(gl.TRIANGLES, mesh.indices.length, gl.UNSIGNED_INT, 0);
+      gl.finish();
+    }
+
+    document.fonts.ready.then(() => {
+      renderModel();
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        window.previewReady = true;
+      }));
+    });
+  </script>
+</body>
+</html>
