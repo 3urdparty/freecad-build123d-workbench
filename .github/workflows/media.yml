@@ -1,0 +1,22 @@
+name: Media
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - assets/media/**
+      - assets/social-preview/**
+      - examples/bracket.py
+      - examples/cq_pillow_block.py
+      - examples/bearing_flange.py
+
+jobs:
+  browser-media:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9.0.0
+      - run: uv run --script --with playwright==1.54.0 playwright install chromium
+      - run: uv run --script assets/media/generate.py social
+      - run: uv run --script assets/media/generate.py gallery
+      - run: uv run --script assets/media/generate.py verify-static
