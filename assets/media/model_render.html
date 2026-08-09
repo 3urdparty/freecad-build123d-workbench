@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>html,body,canvas{margin:0;width:1200px;height:750px;overflow:hidden;background:#151c23}canvas{display:block}</style>
+<canvas id="model"></canvas><script id="mesh-data" type="application/json">{{MESH_JSON}}</script>
+<script>
+const mesh=JSON.parse(document.querySelector('#mesh-data').textContent),canvas=document.querySelector('#model');canvas.width=1200;canvas.height=750;const gl=canvas.getContext('webgl2',{antialias:true});
+function shader(type,source){const s=gl.createShader(type);gl.shaderSource(s,source);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(s));return s}
+const p=gl.createProgram(),v=shader(gl.VERTEX_SHADER,`#version 300 es
+in vec3 position,normal;uniform vec2 center,scale;out vec3 n;void main(){gl_Position=vec4((position.xy-center)*scale,-position.z*.0025,1);n=normal;}`),f=shader(gl.FRAGMENT_SHADER,`#version 300 es
+precision highp float;in vec3 n;out vec4 color;void main(){vec3 q=normalize(gl_FrontFacing?n:-n),key=normalize(vec3(-.55,.8,1.2)),fill=normalize(vec3(.8,-.35,.7)),rim=normalize(vec3(.35,.7,-1.));float light=.34+max(dot(q,key),0.)*.64+max(dot(q,fill),0.)*.20+pow(max(dot(q,rim),0.),2.)*.16;color=vec4(vec3(.18,.43,.61)*light+vec3(.025,.07,.09),1);}`);
+gl.attachShader(p,v);gl.attachShader(p,f);gl.linkProgram(p);gl.useProgram(p);function attr(name,data){let b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.STATIC_DRAW);let l=gl.getAttribLocation(p,name);gl.enableVertexAttribArray(l);gl.vertexAttribPointer(l,3,gl.FLOAT,false,0,0)}attr('position',mesh.positions);attr('normal',mesh.normals);let b=gl.createBuffer();gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,b);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint32Array(mesh.indices),gl.STATIC_DRAW);let w=mesh.bounds.max_x-mesh.bounds.min_x,h=mesh.bounds.max_y-mesh.bounds.min_y,s=Math.min(1200*.9/w,750*.72/h);gl.uniform2f(gl.getUniformLocation(p,'center'),(mesh.bounds.min_x+mesh.bounds.max_x)/2,(mesh.bounds.min_y+mesh.bounds.max_y)/2+h*.015);gl.uniform2f(gl.getUniformLocation(p,'scale'),2*s/1200,2*s/750);gl.viewport(0,0,1200,750);gl.enable(gl.DEPTH_TEST);gl.clearColor(.082,.11,.137,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.drawElements(gl.TRIANGLES,mesh.indices.length,gl.UNSIGNED_INT,0);gl.finish();requestAnimationFrame(()=>requestAnimationFrame(()=>window.previewReady=true));
+</script>
