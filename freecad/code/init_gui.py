@@ -35,11 +35,13 @@ class CodeWorkbench(Gui.Workbench):
             App.Console.PrintWarning(f"[Code] preferences page unavailable: {exc}\n")
 
     def Activated(self):
+        from . import preferences
         from .kernel_manager import KernelManager
 
-        # Kick off (async-ish) kernel provisioning on first activation so the
-        # first script run doesn't pay the venv-creation cost interactively.
-        KernelManager.instance().ensure_started(background=True)
+        # Respect the user's preference. ensure_started() asks before any
+        # first-run download, then provisions in the background if accepted.
+        if preferences.auto_start_kernel():
+            KernelManager.instance().ensure_started(background=True)
 
     def Deactivated(self):
         pass

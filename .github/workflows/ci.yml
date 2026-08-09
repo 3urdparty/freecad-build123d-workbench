@@ -59,7 +59,7 @@ jobs:
             -c conda-forge
             freecad=1.0
             python=3.11
-      - run: micromamba run -n fc bash tests/freecad/run_e2e.sh
+      - run: micromamba run -n fc env FC_CODE_PROVISIONING_CONSENT=1 bash tests/freecad/run_e2e.sh
         timeout-minutes: 20
       # An abnormal exit is most likely resource pressure: the kernel env
       # pulls both cadquery-ocp variants plus vtk. Say so out loud instead of

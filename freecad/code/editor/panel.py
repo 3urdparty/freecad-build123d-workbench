@@ -288,13 +288,15 @@ class ScriptEditorDock(QtWidgets.QDockWidget):
     def _fetch_completions(self, source: str, line: int, column: int) -> None:
         from ..kernel_manager import KernelManager
 
+        manager = KernelManager.instance()
+        if not manager.request_provisioning_consent():
+            return
         self._completion_seq += 1
         seq = self._completion_seq
 
         def work():
             try:
-                items = KernelManager.instance().complete(source, line, column,
-                                                          self._path)
+                items = manager.complete(source, line, column, self._path)
             except Exception:
                 items = []
             if seq == self._completion_seq:
@@ -307,10 +309,13 @@ class ScriptEditorDock(QtWidgets.QDockWidget):
     def _fetch_signatures(self, source: str, line: int, column: int) -> None:
         from ..kernel_manager import KernelManager
 
+        manager = KernelManager.instance()
+        if not manager.request_provisioning_consent():
+            return
+
         def work():
             try:
-                sigs = KernelManager.instance().signatures(source, line, column,
-                                                           self._path)
+                sigs = manager.signatures(source, line, column, self._path)
             except Exception:
                 sigs = []
             try:
