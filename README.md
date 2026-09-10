@@ -304,3 +304,4 @@ combinations are welcome.
 ## License
 
 [LGPL-2.1-or-later](LICENSE), following the FreeCAD addon convention.
+# freecad-build123d-workbench
