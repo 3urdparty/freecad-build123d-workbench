@@ -20,31 +20,6 @@ def run_timeout_s() -> int:
     return _grp().GetInt("RunTimeoutS", 60)
 
 
-def autosave_enabled() -> bool:
-    """Embedded editor: save + re-run automatically while typing."""
-    return _grp().GetBool("AutosaveEnabled", True)
+def auto_start_bridge() -> bool:
+    return _grp().GetBool("AutoStartBridge", True)
 
-
-def autosave_ms() -> int:
-    """Idle time before the embedded editor autosaves and re-runs."""
-    return _grp().GetInt("AutosaveMs", 600)
-
-
-def auto_start_kernel() -> bool:
-    return _grp().GetBool("AutoStartKernel", True)
-
-
-def env_dir_override() -> str:
-    """Empty string means: use the default location under user app data."""
-    return _grp().GetString("EnvDir", "")
-
-
-def package_pins() -> str:
-    """pip requirements installed into the kernel env (one per line).
-
-    Pinned by default: an unpinned `build123d` means a PyPI release can
-    break every user's kernel overnight. Users can loosen or bump these in
-    the preferences page, then run 'Rebuild kernel environment'. Keep the
-    defaults in sync with the versions CI tests against.
-    """
-    return _grp().GetString("PackagePins", "build123d==0.11.1\ncadquery==2.8.0")

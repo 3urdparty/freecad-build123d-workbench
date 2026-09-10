@@ -65,13 +65,9 @@ class CodePreferencesPage:
     def loadSettings(self):  # noqa: N802 (FreeCAD API)
         from . import preferences
 
-        self.autosave.setChecked(preferences.autosave_enabled())
-        self.autosave_ms.setValue(preferences.autosave_ms())
         self.debounce_ms.setValue(preferences.debounce_ms())
         self.run_timeout.setValue(preferences.run_timeout_s())
-        self.auto_start.setChecked(preferences.auto_start_kernel())
-        self.env_dir.setText(preferences.env_dir_override())
-        self.pins.setPlainText(preferences.package_pins())
+        self.auto_start.setChecked(preferences.auto_start_bridge())
 
     def saveSettings(self):  # noqa: N802 (FreeCAD API)
         grp = _grp()

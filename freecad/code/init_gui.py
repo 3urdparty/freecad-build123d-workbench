@@ -12,13 +12,14 @@ ICON_PATH = os.path.join(os.path.dirname(__file__), "resources", "icons")
 
 
 class CodeWorkbench(Gui.Workbench):
-    """Work with build123d and CadQuery natively inside FreeCAD."""
+    """Bridge externally-generated CAD geometry into native FreeCAD objects."""
 
     MenuText = "Code"
-    ToolTip = "build123d / CadQuery scripting with an isolated kernel"
+    ToolTip = "Code-first CAD integration for FreeCAD"
     Icon = os.path.join(ICON_PATH, "code_workbench.svg")
 
     def Initialize(self):
+
         # Imports deferred: FreeCAD calls Initialize() on first activation.
         from . import commands
 
@@ -36,12 +37,11 @@ class CodeWorkbench(Gui.Workbench):
 
     def Activated(self):
         from . import preferences
-        from .kernel_manager import KernelManager
 
-        # Respect the user's preference. ensure_started() asks before any
-        # first-run download, then provisions in the background if accepted.
-        if preferences.auto_start_kernel():
-            KernelManager.instance().ensure_started(background=True)
+        from .bridge.lifecycle import start
+
+        if preferences.auto_start_bridge():
+            start()
 
     def Deactivated(self):
         pass
