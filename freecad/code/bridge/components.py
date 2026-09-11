@@ -7,12 +7,14 @@ import re
 from typing import Any
 
 import FreeCAD as App
+import FreeCADGui as Gui
 import Part
 
 
 PROPERTY_GROUP = "Build123d"
 ID_PROPERTY = "Build123dId"
 COMPONENT_ID_PROPERTY = "Build123dId"
+FEATURE_ID_PROPERTY = "CaddevFeatureId"
 DATUM_ID_PROPERTY = "CaddevDatumId"
 
 
@@ -87,6 +89,16 @@ def find_component(
 
     return None
 
+def deserialize_location(
+    data: dict | None,
+) -> App.Placement:
+    if data is None:
+        return App.Placement()
+
+    return App.Placement(
+        App.Vector(*data["position"]),
+        App.Rotation(*data["rotation"]),
+    )
 
 def _decode_brep(brep64: str):
     """Decode a base64 textual BREP into a native FreeCAD Part.Shape."""
@@ -122,7 +134,9 @@ def create_component(
 ):
     component = doc.addObject(
         "App::Part",
-        _safe_name(component_id),
+        _safe_name(
+            component_id
+        ),
     )
 
     component.Label = label
@@ -140,21 +154,16 @@ def create_component(
         component_id,
     )
 
-    geometry = doc.addObject(
-        "Part::Feature",
-        f"{_safe_name(component_id)}_Geometry",
-    )
-
-    geometry.Label = "Geometry"
-
-    component.addObject(geometry)
-
     return component
+
 
 def update_component(
     params: dict[str, Any],
 ) -> dict[str, Any]:
-    component_id = str(params["id"])
+    component_id = str(
+        params["id"]
+    )
+
     label = str(
         params.get("name")
         or component_id
@@ -164,68 +173,53 @@ def update_component(
         params.get("document")
     )
 
-    shape = _decode_brep(
-        params["brep64"]
-    )
-
     component = find_component(
         doc,
         component_id,
     )
 
-    created = False
-    migrated = False
+    created = (
+        component is None
+    )
 
     if component is None:
-        legacy = find_legacy_component(
+        component = create_component(
             doc,
             component_id,
-        )
-
-        if legacy is not None:
-            placement = legacy.Placement
-
-            doc.removeObject(
-                legacy.Name
-            )
-            doc.recompute()
-
-            component = create_component(
-                doc,
-                component_id,
-                label,
-            )
-
-            component.Placement = placement
-            migrated = True
-
-        else:
-            component = create_component(
-                doc,
-                component_id,
-                label,
-            )
-
-            created = True
-
-    if component.TypeId != "App::Part":
-        raise RuntimeError(
-            f"expected App::Part for "
-            f"{component_id!r}, "
-            f"got {component.TypeId}"
+            label,
         )
 
     component.Label = label
 
-    geometry = get_geometry(
-        component
+    #
+    # Features
+    #
+
+    features = (
+        params.get("features")
+        or {}
     )
 
-    # Incoming BREP stays in component-local coordinates.
-    shape.Placement = App.Placement()
+    remove_stale_features(
+        doc,
+        component,
+        set(features),
+    )
 
-    geometry.Shape = shape
-    geometry.Placement = App.Placement()
+    for (
+        feature_id,
+        feature_data,
+    ) in features.items():
+        update_feature(
+            doc,
+            component,
+            feature_id,
+            feature_data,
+        )
+
+    #
+    # Datums
+    #
 
     datums = (
         params.get("datums")
@@ -246,15 +240,25 @@ def update_component(
             datum_data,
         )
 
+    component.touch()
     doc.recompute()
+    resolve_assemblies(doc)
 
     return {
         "id": component_id,
-        "object_name": component.Name,
-        "label": component.Label,
+        "object_name": (
+            component.Name
+        ),
+        "label": (
+            component.Label
+        ),
         "created": created,
-        "migrated": migrated,
-        "datum_count": len(datums),
+        "feature_count": len(
+            features
+        ),
+        "datum_count": len(
+            datums
+        ),
     }
 
 
@@ -405,6 +409,8 @@ def update_datum(
         App.Rotation(*rotation),
     )
 
+    datum.touch()
+
     return datum
 
 def remove_stale_datums(
@@ -423,3 +429,329 @@ def remove_stale_datums(
 
         if datum_id not in incoming:
             doc.removeObject(obj.Name)
+
+def find_feature(
+    component,
+    feature_id: str,
+):
+    for obj in component.Group:
+        if (
+            FEATURE_ID_PROPERTY
+            not in obj.PropertiesList
+        ):
+            continue
+
+        if getattr(
+            obj,
+            FEATURE_ID_PROPERTY,
+        ) == feature_id:
+            return obj
+
+    return None
+
+def create_feature(
+    doc,
+    component,
+    feature_id: str,
+    label: str,
+):
+    obj = doc.addObject(
+        "Part::Feature",
+        _safe_name(
+            f"{component.Name}_{feature_id}"
+        ),
+    )
+
+    obj.Label = label
+
+    obj.addProperty(
+        "App::PropertyString",
+        FEATURE_ID_PROPERTY,
+        "Caddev",
+        "Stable caddev feature identifier",
+    )
+
+    setattr(
+        obj,
+        FEATURE_ID_PROPERTY,
+        feature_id,
+    )
+
+    component.addObject(
+        obj
+    )
+
+    return obj
+
+def update_feature(
+    doc,
+    component,
+    feature_id: str,
+    data: dict,
+):
+    feature = find_feature(
+        component,
+        feature_id,
+    )
+
+    label = str(
+        data.get("name")
+        or feature_id
+    )
+
+    if feature is None:
+        feature = create_feature(
+            doc,
+            component,
+            feature_id,
+            label,
+        )
+
+    feature.Label = label
+
+    shape = _decode_brep(
+        data["brep64"]
+    )
+
+    # Geometry is always component-local.
+    shape.Placement = App.Placement()
+
+    feature.Shape = shape
+    feature.Placement = deserialize_location(
+        data.get("location")
+    )
+
+    apply_appearance(
+        feature,
+        data.get("appearance"),
+    )
+
+    apply_material(
+        feature,
+        data.get("material"),
+    )
+
+    return feature
+
+def remove_stale_features(
+    doc,
+    component,
+    incoming: set[str],
+) -> None:
+    for obj in list(
+        component.Group
+    ):
+        if (
+            FEATURE_ID_PROPERTY
+            not in obj.PropertiesList
+        ):
+            continue
+
+        feature_id = getattr(
+            obj,
+            FEATURE_ID_PROPERTY,
+        )
+
+        if feature_id not in incoming:
+            doc.removeObject(
+                obj.Name
+            )
+def ensure_material_properties(
+    obj,
+) -> None:
+    if "MaterialName" not in obj.PropertiesList:
+        obj.addProperty(
+            "App::PropertyString",
+            "MaterialName",
+            "Material",
+            "Engineering material",
+        )
+
+    if "MaterialDensity" not in obj.PropertiesList:
+        obj.addProperty(
+            "App::PropertyFloat",
+            "MaterialDensity",
+            "Material",
+            "Density in kg/m^3",
+        )
+
+    if "YoungsModulus" not in obj.PropertiesList:
+        obj.addProperty(
+            "App::PropertyFloat",
+            "YoungsModulus",
+            "Material",
+            "Young's modulus in Pa",
+        )
+
+    if "PoissonRatio" not in obj.PropertiesList:
+        obj.addProperty(
+            "App::PropertyFloat",
+            "PoissonRatio",
+            "Material",
+            "Poisson ratio",
+        )
+
+    if "MaterialDescription" not in obj.PropertiesList:
+        obj.addProperty(
+            "App::PropertyString",
+            "MaterialDescription",
+            "Material",
+            "Material description",
+        )
+
+
+def apply_material(
+    obj,
+    data: dict | None,
+) -> None:
+    if data is None:
+        return
+
+    ensure_material_properties(
+        obj
+    )
+
+    obj.MaterialName = str(
+        data.get("name") or ""
+    )
+
+    density = data.get(
+        "density"
+    )
+
+    if density is not None:
+        obj.MaterialDensity = float(
+            density
+        )
+
+    youngs_modulus = data.get(
+        "youngs_modulus"
+    )
+
+    if youngs_modulus is not None:
+        obj.YoungsModulus = float(
+            youngs_modulus
+        )
+
+    poisson_ratio = data.get(
+        "poisson_ratio"
+    )
+
+    if poisson_ratio is not None:
+        obj.PoissonRatio = float(
+            poisson_ratio
+        )
+
+    obj.MaterialDescription = str(
+        data.get("description") or ""
+    )
+
+def apply_appearance(
+    obj,
+    data: dict | None,
+) -> None:
+    if data is None:
+        return
+
+    view = obj.ViewObject
+
+    color = data.get("color")
+
+    if color is not None:
+        view.ShapeColor = tuple(
+            float(value)
+            for value in color
+        )
+
+    transparency = data.get(
+        "transparency"
+    )
+
+    if transparency is not None:
+        view.Transparency = int(
+            transparency
+        )
+
+    shininess = data.get(
+        "shininess"
+    )
+
+    if shininess is not None:
+        material = view.ShapeMaterial
+
+        material.Shininess = float(
+            shininess
+        )
+
+        view.ShapeMaterial = material
+
+def resolve_assemblies(doc) -> None:
+    # First force all Assembly joints to re-evaluate
+    # their reference/JCS placements.
+    for obj in doc.Objects:
+        if obj.TypeId != "Assembly::JointGroup":
+            continue
+
+        for joint in obj.Group:
+            joint.touch()
+            joint.recompute()
+
+    # Then solve each assembly.
+    for obj in doc.Objects:
+        if obj.TypeId != "Assembly::AssemblyObject":
+            continue
+
+        obj.touch()
+        obj.recompute()
+
+        if hasattr(obj, "solve"):
+            obj.solve(False)
+
+    doc.recompute()
+
+
+def highlight_subelements(
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    doc = App.ActiveDocument
+
+    component_id = str(params["component_id"])
+    feature_id = str(params["feature_id"])
+    subelements = [
+        str(value)
+        for value in params.get("subelements", [])
+    ]
+
+    component = find_component(
+        doc,
+        component_id,
+    )
+
+    if component is None:
+        raise ValueError(
+            f"Component not found: {component_id}"
+        )
+
+    feature = find_feature(
+        component,
+        feature_id,
+    )
+
+    if feature is None:
+        raise ValueError(
+            f"Feature not found: {feature_id}"
+        )
+
+    Gui.Selection.clearSelection()
+
+    for subelement in subelements:
+        Gui.Selection.addSelection(
+            feature,
+            subelement,
+        )
+
+    return {
+        "component_id": component_id,
+        "feature_id": feature_id,
+        "highlighted": len(subelements),
+    }

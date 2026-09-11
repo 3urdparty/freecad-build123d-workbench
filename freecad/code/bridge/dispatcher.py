@@ -10,6 +10,7 @@ from PySide import QtCore
 from .components import (
     delete_component,
     document_info,
+    highlight_subelements,
     recompute_document,
     update_component,
 )
@@ -23,6 +24,7 @@ METHODS: dict[str, Handler] = {
     "document.recompute": recompute_document,
     "component.update": update_component,
     "component.delete": delete_component,
+    "debug.highlight": highlight_subelements,
 }
 
 
